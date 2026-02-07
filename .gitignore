@@ -1,0 +1,25 @@
+build/
+devel/
+install
+*.so
+*.a
+*.o
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+catkin_generated/
+CTestTestfile.cmake
+
+.vscode/
+.idea/
+*.swp
+*~
+
+# 数据文件
+*.pcd
+*.bag
+*.ply
+*.pcap
+
+.devel/
