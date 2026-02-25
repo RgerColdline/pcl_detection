@@ -1,0 +1,16 @@
+<launch>
+    <!-- 对象检测节点 -->
+    <node pkg="pcl_detection" type="pcl_detection_detector_node" name="object_detector" output="screen">
+        <param name="config_file" value="$(find pcl_detection)/config/sample_config.yaml" />
+        <param name="input_topic" value="/livox/lidar" />
+        <param name="result_topic" value="/pcl_detection/result" />
+        <param name="objects_topic" value="/pcl_detection/objects" />
+        <param name="skip_frames" value="0" />
+    </node>
+
+    <!-- RViz 可视化节点 -->
+    <node pkg="pcl_detection" type="pcl_detection_visualizer_node" name="detection_visualizer" output="screen">
+        <param name="result_topic" value="/pcl_detection/result" />
+        <param name="marker_topic" value="/pcl_detection/visualization/marker" />
+    </node>
+</launch>

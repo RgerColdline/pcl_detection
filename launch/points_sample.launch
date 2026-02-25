@@ -1,6 +1,5 @@
 <launch>
-    <node name="points_sample_node" pkg="pcl_detection" type="pcl_detection_node" output="screen">
-        <!-- 配置参数 (可根据需要取消注释) -->
-        <!-- <rosparam command="load" file="$(find pcl_detection)/config/points_sample.yaml" /> -->
+    <!-- 无人机飞行控制节点 -->
+    <node name="points_sample" pkg="pcl_detection" type="pcl_detection_samples_node" output="screen">
     </node>
 </launch>
