@@ -61,8 +61,6 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
     // 角度阈值：法向量 Z 分量最大值（竖直墙面法向量接近水平）
     float max_z_component = std::sin(config.angle_threshold * M_PI / 180.0f);
 
-    std::cout << "[Wall Extraction] 开始检测，可用点：" << current_indices->indices.size() 
-              << ", 最大检测：" << max_walls << ", 迭代次数：200" << std::endl;
 
     while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && wall_num <= max_walls) {
         // 设置当前索引
@@ -78,14 +76,10 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
-        std::cout << "[Wall Extraction] 迭代 " << wall_num 
-                  << ", 内点数量：" << inliers_local->indices.size() 
-                  << ", 耗时：" << elapsed << " ms" << std::endl;
 
         // 检查内点数量
         if (inliers_local->indices.empty() ||
             inliers_local->indices.size() < static_cast<size_t>(config.min_inliers)) {
-            std::cout << "[Wall Extraction] 内点不足，退出" << std::endl;
             break;
         }
 
@@ -94,8 +88,6 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         float z_component = std::abs(normal[2]);
 
         if (z_component > max_z_component) {
-            std::cout << "[Wall Extraction] 法向量 Z 分量=" << z_component 
-                      << "，不是竖直墙面，跳过" << std::endl;
             // 移除这些点
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
@@ -152,8 +144,6 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
                                        elapsed, width, height, depth, false);  // 不使用法向量
         walls.push_back(wall);
 
-        std::cout << "[Wall Extraction] 检测到墙面：" << wall->name 
-                  << ", 点数：" << inliers_local->indices.size() << std::endl;
 
         // 从当前索引中移除这些点
         std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
@@ -167,7 +157,6 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         wall_num++;
     }
 
-    std::cout << "[Wall Extraction] 完成，共检测到 " << walls.size() << " 个墙面" << std::endl;
     return walls;
 }
 

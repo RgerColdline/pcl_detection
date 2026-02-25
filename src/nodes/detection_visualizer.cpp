@@ -84,7 +84,12 @@ private:
         }
         
         if (!marker_array.markers.empty()) {
-            ROS_INFO("Publishing %lu markers", marker_array.markers.size());
+            // 每 10 次发布输出一次日志
+            static int publish_count = 0;
+            publish_count++;
+            if (publish_count % 10 == 0) {
+                ROS_INFO("Publishing %lu markers", marker_array.markers.size());
+            }
             marker_pub_.publish(marker_array);
         }
     }

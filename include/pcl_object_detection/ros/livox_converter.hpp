@@ -22,9 +22,13 @@ public:
 
     /**
      * @brief 将 Livox CustomMsg 转换为 PCL 点云
+     * @param livox_msg Livox 点云消息
+     * @param output_cloud 输出的 PCL 点云
+     * @param debug_level 调试级别：0=无输出，1=只输出摘要，2=输出详细点信息
      */
     static bool convert(const livox_ros_driver2::CustomMsg::ConstPtr& livox_msg,
-                        PointCloudPtrT& output_cloud)
+                        PointCloudPtrT& output_cloud,
+                        int debug_level = 1)
     {
         if (!livox_msg) {
             ROS_ERROR("Livox msg is null!");
@@ -40,12 +44,13 @@ public:
         int count = 0;
         for (const auto& point : livox_msg->points) {
             PointT p;
-            p.x = point.x;  // 不除 1000，直接使用原始值
+            p.x = point.x;
             p.y = point.y;
             p.z = point.z;
             p.intensity = point.reflectivity;
 
-            if (count < 5) {
+            // 调试级别 2：输出前 5 个点的详细信息
+            if (debug_level >= 2 && count < 5) {
                 ROS_INFO("Point %d: raw=(%d,%d,%d) -> (%.3f,%.3f,%.3f)",
                          count, point.x, point.y, point.z, p.x, p.y, p.z);
             }
@@ -54,8 +59,11 @@ public:
             output_cloud->push_back(p);
         }
 
-        ROS_INFO("Livox conversion: input=%d, output=%lu",
-                 livox_msg->point_num, output_cloud->size());
+        // 调试级别 1 或以上：输出摘要
+        if (debug_level >= 1) {
+            ROS_INFO("Livox conversion: input=%d, output=%lu",
+                     livox_msg->point_num, output_cloud->size());
+        }
 
         output_cloud->width = output_cloud->size();
         output_cloud->height = 1;
