@@ -1,0 +1,40 @@
+timing:
+  enable: true
+  downsample: true
+  walls: true
+  cylinders: true
+  circles: true
+  total: true
+  
+downsample_config:
+  downsample_method: "standard"
+  leaf_size: 0.05
+
+wall_extraction:
+  enable: true
+  using_normal: true
+  distance_threshold: 0.05
+  min_inliers: 1000
+  angle_threshold: 100.0
+  axis: [0, 0, 1]
+
+cylinder_extraction:
+  enable: true
+  using_normal: true
+  distance_threshold: 0.03
+  min_inliers: 200
+  radius_min: 0.1
+  radius_max: 0.4
+  axis: [0, 0, 1]
+  eps_angle: 15.0
+
+circle_extraction:
+  enable: true
+  using_normal: false
+  distance_threshold: 0.02
+  min_inliers: 200
+  radius_min: 0.1
+  radius_max: 0.5
+
+save_objects: true
+output_dir: "/home/jetson/detected_objects"

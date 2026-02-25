@@ -1,0 +1,9 @@
+<launch>
+    <arg name="config" default="$(find pcl_detection)/config/sample_config.yaml" />
+    <arg name="input_pcd" default="" />
+
+    <node pkg="pcl_detection" type="pcl_detection_node" name="object_detection" output="screen">
+        <param name="config" type="string" value="$(arg config)" />
+        <param name="input_pcd" type="string" value="$(arg input_pcd)" />
+    </node>
+</launch>

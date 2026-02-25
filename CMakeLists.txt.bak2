@@ -1,0 +1,61 @@
+cmake_minimum_required(VERSION 3.0.2)
+project(pcl_detection)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+## Compile as C++14 for better PCL support
+add_compile_options(-std=c++14)
+
+## Find catkin macros and libraries
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  livox_ros_driver2
+)
+
+## Find PCL
+find_package(PCL REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
+################################################
+## catkin specific configuration ##
+################################################
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}
+  CATKIN_DEPENDS roscpp std_msgs sensor_msgs geometry_msgs livox_ros_driver2
+  DEPENDS PCL
+)
+
+###########
+## Build ##
+###########
+
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+)
+
+## Declare the main executable
+add_executable(${PROJECT_NAME}_node 
+  src/nodes/points_samples.cpp
+)
+
+## Link libraries
+target_link_libraries(${PROJECT_NAME}_node
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+## Set up install targets
+install(TARGETS ${PROJECT_NAME}_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+install(FILES 
+  include/${PROJECT_NAME}/points_sample.h
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
