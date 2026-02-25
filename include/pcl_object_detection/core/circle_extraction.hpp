@@ -204,18 +204,20 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         return circles;
     }
 
+    auto start_total = std::chrono::high_resolution_clock::now();
+
     // 步骤 1: 提取竖直平面
     pcl::SACSegmentationFromNormals<PointT, pcl::Normal> plane_seg;
     plane_seg.setOptimizeCoefficients(true);
     plane_seg.setModelType(pcl::SACMODEL_PLANE);
     plane_seg.setMethodType(pcl::SAC_RANSAC);
-    plane_seg.setDistanceThreshold(config.distance_threshold * 3);
-    plane_seg.setMaxIterations(500);
+    plane_seg.setDistanceThreshold(config.plane_distance_threshold);
+    plane_seg.setMaxIterations(config.ransac_iterations);
 
     if (config.using_normal && normals_to_use) {
         plane_seg.setInputNormals(normals_to_use);
         plane_seg.setAxis(Eigen::Vector3f(0, 0, 1));
-        plane_seg.setEpsAngle(45.0 * M_PI / 180.0f);
+        plane_seg.setEpsAngle(config.plane_angle_threshold * M_PI / 180.0f);
     }
 
     typename pcl::PointIndices::Ptr all_indices(new pcl::PointIndices);
@@ -223,9 +225,10 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
 
     typename pcl::PointIndices::Ptr current_indices = all_indices;
     int circle_num = 1;
-    int max_circles = 10;
 
-    while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && circle_num <= max_circles) {
+    while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && circle_num <= config.max_circles) {
+        auto start_iter = std::chrono::high_resolution_clock::now();
+        
         plane_seg.setIndices(current_indices);
         plane_seg.setInputCloud(cloud);
 
@@ -234,7 +237,7 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
 
         plane_seg.segment(*plane_inliers, *plane_coeffs);
 
-        std::cout << "[Circle Extraction] 迭代 " << circle_num 
+        std::cout << "[Circle Extraction] 迭代 " << circle_num
                   << ", 平面内点：" << plane_inliers->indices.size() << std::endl;
 
         if (plane_inliers->indices.size() < static_cast<size_t>(config.min_inliers)) {
@@ -245,11 +248,11 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         // 验证平面法向量是否水平
         Eigen::Vector3f plane_normal(plane_coeffs->values[0], plane_coeffs->values[1], plane_coeffs->values[2]);
         float plane_normal_z = std::abs(plane_normal[2]);
-        
-        std::cout << "[Circle Extraction] 平面法向量：(" << plane_normal.transpose() 
+
+        std::cout << "[Circle Extraction] 平面法向量：(" << plane_normal.transpose()
                   << "), Z 分量：" << plane_normal_z << std::endl;
 
-        if (plane_normal_z > 0.7f) {
+        if (plane_normal_z > config.plane_normal_z_max) {
             std::cout << "[Circle Extraction] 法向量 Z 分量过大，跳过" << std::endl;
             // 移除平面点
             std::set<int> plane_set(plane_inliers->indices.begin(), plane_inliers->indices.end());
@@ -322,7 +325,7 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         
         if (!fitCircleRANSAC(points_2d, circle_params, circle_inliers_2d,
                              config.distance_threshold, config.min_inliers,
-                             config.radius_min, config.radius_max, 500)) {
+                             config.radius_min, config.radius_max, config.ransac_iterations)) {
             std::cout << "[Circle Extraction] 圆拟合失败" << std::endl;
             std::set<int> plane_set(plane_inliers->indices.begin(), plane_inliers->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
@@ -337,14 +340,14 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         }
 
         float radius = circle_params[2];
-        std::cout << "[Circle Extraction] 圆拟合成功：中心=(" << circle_params[0] 
+        std::cout << "[Circle Extraction] 圆拟合成功：中心=(" << circle_params[0]
                   << ", " << circle_params[1] << "), 半径=" << radius << std::endl;
 
         // 检查圆周覆盖度
         float coverage = checkCircleCoverage(points_2d, circle_params.head<2>(), radius);
-        std::cout << "[Circle Extraction] 圆周覆盖度：" << coverage << " 度" << std::endl;
-        
-        if (coverage < 180.0f) {
+        std::cout << "[Circle Extraction] 圆周覆盖度：" << coverage << " 度 (要求>=" << config.min_coverage_angle << "度)" << std::endl;
+
+        if (coverage < config.min_coverage_angle) {
             std::cout << "[Circle Extraction] 覆盖度不足，跳过" << std::endl;
             std::set<int> plane_set(plane_inliers->indices.begin(), plane_inliers->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
@@ -395,10 +398,9 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         coefficients->values[5] = plane_normal[2];
         coefficients->values[6] = radius;
 
-        // 计时
-        auto start_time = std::chrono::high_resolution_clock::now();
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        // 计算当前迭代耗时
+        auto end_iter = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration<double, std::milli>(end_iter - start_iter).count();
 
         // 计算尺寸
         float width = 2 * radius;
@@ -409,8 +411,9 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
                                            coefficients, elapsed, width, height, depth);
         circles.push_back(circle);
 
-        std::cout << "[Circle Extraction] 成功检测：" << circle->name 
-                  << ", 点数：" << circle_inliers->indices.size() << std::endl;
+        std::cout << "[Circle Extraction] 成功检测：" << circle->name
+                  << ", 点数：" << circle_inliers->indices.size()
+                  << ", 耗时：" << elapsed << " ms" << std::endl;
 
         // 从当前索引中移除这些点
         std::set<int> circle_set(circle_inliers->indices.begin(), circle_inliers->indices.end());
@@ -424,7 +427,10 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         circle_num++;
     }
 
-    std::cout << "[Circle Extraction] 完成，共检测到 " << circles.size() << " 个圆环" << std::endl;
+    auto end_total = std::chrono::high_resolution_clock::now();
+    auto total_elapsed = std::chrono::duration<double, std::milli>(end_total - start_total).count();
+    std::cout << "[Circle Extraction] 完成，共检测到 " << circles.size() 
+              << " 个圆环，总耗时：" << total_elapsed << " ms" << std::endl;
     return circles;
 }
 

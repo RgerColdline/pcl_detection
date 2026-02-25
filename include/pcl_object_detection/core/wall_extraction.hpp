@@ -16,7 +16,7 @@ namespace pcl_object_detection
 namespace core
 {
 
-// 提取多个垂直墙面
+// 提取多个垂直墙面（优化版：不使用法向量）
 template <typename PointT>
 std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr cloud,
                                       typename pcl::PointCloud<pcl::Normal>::Ptr normals,
@@ -29,14 +29,14 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         return walls;
     }
 
-    // 创建分割对象 - 使用普通平面模型
-    pcl::SACSegmentationFromNormals<PointT, pcl::Normal> seg;
+    // 使用不带法向量的平面分割（更快）
+    pcl::SACSegmentation<PointT> seg;
 
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
     seg.setDistanceThreshold(config.distance_threshold);
-    seg.setMaxIterations(1000);
+    seg.setMaxIterations(200);  // 大幅减少迭代
 
     // 创建初始索引（排除已用点）
     typename pcl::PointIndices::Ptr all_indices(new pcl::PointIndices);
@@ -56,47 +56,52 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
     typename pcl::PointIndices::Ptr current_indices = all_indices;
 
     int wall_num = 1;
+    int max_walls = 4;  // 限制最大墙面数量
 
-    // 角度阈值转换为弧度（用于判断法向量是否接近水平）
-    // 竖直墙面的法向量应该接近水平（与 Z 轴夹角接近 90 度）
-    // angle_threshold 表示允许偏离水平面的最大角度
+    // 角度阈值：法向量 Z 分量最大值（竖直墙面法向量接近水平）
     float max_z_component = std::sin(config.angle_threshold * M_PI / 180.0f);
 
-    while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers)) {
-        // 设置当前要处理的索引
+    std::cout << "[Wall Extraction] 开始检测，可用点：" << current_indices->indices.size() 
+              << ", 最大检测：" << max_walls << ", 迭代次数：200" << std::endl;
+
+    while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && wall_num <= max_walls) {
+        // 设置当前索引
         seg.setIndices(current_indices);
         seg.setInputCloud(cloud);
-        if (config.using_normal && normals) {
-            seg.setInputNormals(normals);
-        }
 
         // 执行分割
         typename pcl::PointIndices::Ptr inliers_local(new pcl::PointIndices);
         typename pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
-        // 计时
         auto start_time = std::chrono::high_resolution_clock::now();
         seg.segment(*inliers_local, *coefficients);
         auto end_time = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
 
-        // 检查是否找到足够的内点
-        if (inliers_local->indices.empty() || 
+        std::cout << "[Wall Extraction] 迭代 " << wall_num 
+                  << ", 内点数量：" << inliers_local->indices.size() 
+                  << ", 耗时：" << elapsed << " ms" << std::endl;
+
+        // 检查内点数量
+        if (inliers_local->indices.empty() ||
             inliers_local->indices.size() < static_cast<size_t>(config.min_inliers)) {
+            std::cout << "[Wall Extraction] 内点不足，退出" << std::endl;
             break;
         }
 
         // 检查平面法向量是否接近水平（竖直墙面）
         Eigen::Vector3f normal(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
         float z_component = std::abs(normal[2]);
-        
+
         if (z_component > max_z_component) {
-            // 法向量太接近 Z 轴，这是水平面（地面/天花板），不是墙面，跳过
+            std::cout << "[Wall Extraction] 法向量 Z 分量=" << z_component 
+                      << "，不是竖直墙面，跳过" << std::endl;
+            // 移除这些点
+            std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
-            for (size_t i = 0; i < current_indices->indices.size(); ++i) {
-                if (std::find(inliers_local->indices.begin(), inliers_local->indices.end(),
-                              current_indices->indices[i]) == inliers_local->indices.end()) {
-                    new_indices->indices.push_back(current_indices->indices[i]);
+            for (int idx : current_indices->indices) {
+                if (inlier_set.find(idx) == inlier_set.end()) {
+                    new_indices->indices.push_back(idx);
                 }
             }
             current_indices = new_indices;
@@ -106,19 +111,15 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         // 检查是否与已提取的墙面重复
         bool is_duplicate = false;
         for (const auto &wall : walls) {
-            // 计算法向量夹角
             Eigen::Vector3f normal2(wall->coefficients->values[0], wall->coefficients->values[1],
                                     wall->coefficients->values[2]);
-
-            float dot    = normal.dot(normal2);
-            dot          = std::max(-1.0f, std::min(1.0f, dot));
+            float dot = normal.dot(normal2);
+            dot = std::max(-1.0f, std::min(1.0f, dot));
             double angle = std::acos(dot) * 180.0 / M_PI;
 
-            // 如果法向量几乎平行（夹角小或接近 180 度）且距离相近，则是重复
             if (angle < config.angle_threshold || angle > (180.0 - config.angle_threshold)) {
                 double d1 = coefficients->values[3];
                 double d2 = wall->coefficients->values[3];
-
                 if (std::abs(d1 - d2) < 0.1) {
                     is_duplicate = true;
                     break;
@@ -127,12 +128,11 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         }
 
         if (is_duplicate) {
-            // 从当前索引中移除这些点
+            std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
-            for (size_t i = 0; i < current_indices->indices.size(); ++i) {
-                if (std::find(inliers_local->indices.begin(), inliers_local->indices.end(),
-                              current_indices->indices[i]) == inliers_local->indices.end()) {
-                    new_indices->indices.push_back(current_indices->indices[i]);
+            for (int idx : current_indices->indices) {
+                if (inlier_set.find(idx) == inlier_set.end()) {
+                    new_indices->indices.push_back(idx);
                 }
             }
             current_indices = new_indices;
@@ -143,36 +143,31 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         Eigen::Vector4f min_pt, max_pt;
         pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
 
-        float width =
-            std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
+        float width = std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
         float height = max_pt[2] - min_pt[2];
-        float depth  = 0.0f;  // 墙面厚度通常很小
+        float depth = 0.0f;
 
         // 保存墙面信息
-        auto wall =
-            Object::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
-                               elapsed, width, height, depth, config.using_normal);
-
+        auto wall = Object::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
+                                       elapsed, width, height, depth, false);  // 不使用法向量
         walls.push_back(wall);
 
+        std::cout << "[Wall Extraction] 检测到墙面：" << wall->name 
+                  << ", 点数：" << inliers_local->indices.size() << std::endl;
+
         // 从当前索引中移除这些点
+        std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
         typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
-        for (size_t i = 0; i < current_indices->indices.size(); ++i) {
-            if (std::find(inliers_local->indices.begin(), inliers_local->indices.end(),
-                          current_indices->indices[i]) == inliers_local->indices.end()) {
-                new_indices->indices.push_back(current_indices->indices[i]);
+        for (int idx : current_indices->indices) {
+            if (inlier_set.find(idx) == inlier_set.end()) {
+                new_indices->indices.push_back(idx);
             }
         }
         current_indices = new_indices;
-
         wall_num++;
-
-        // 防止无限循环
-        if (wall_num > 20) {
-            break;
-        }
     }
 
+    std::cout << "[Wall Extraction] 完成，共检测到 " << walls.size() << " 个墙面" << std::endl;
     return walls;
 }
 

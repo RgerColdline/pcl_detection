@@ -101,11 +101,19 @@ template <typename PointT> struct ObjectDetectionPipeline
         // 3. 提取所有对象（使用点云共享排除机制）
         objects.clear();
         std::set<int> used_indices;  // 已使用的点索引
+        
+        // 各类对象提取时间
+        double wall_time = 0.0;
+        double cylinder_time = 0.0;
+        double circle_time = 0.0;
 
         // 提取墙面
         if (config.wall_config.enable) {
-            std::cout << "[Pipeline] 开始提取墙面..." << std::endl;
+            std::cout << "\n[Pipeline] ========== 开始提取墙面 ==========" << std::endl;
+            auto wall_start = std::chrono::high_resolution_clock::now();
             auto walls = extractWalls<PointT>(filtered_cloud, normals, config.wall_config);
+            auto wall_end = std::chrono::high_resolution_clock::now();
+            wall_time = std::chrono::duration<double, std::milli>(wall_end - wall_start).count();
             objects.insert(objects.end(), walls.begin(), walls.end());
             // 收集墙面使用的点
             for (const auto& wall : walls) {
@@ -113,15 +121,20 @@ template <typename PointT> struct ObjectDetectionPipeline
                     used_indices.insert(idx);
                 }
             }
-            std::cout << "[Pipeline] 墙面提取完成，检测到 " << walls.size() 
-                      << " 个墙面，使用 " << used_indices.size() << " 点" << std::endl;
+            std::cout << "[Pipeline] 墙面提取完成：检测到 " << walls.size()
+                      << " 个墙面，使用 " << used_indices.size() << " 点"
+                      << ", 耗时：" << wall_time << " ms" << std::endl;
         }
 
         // 提取圆柱（排除墙面已用点）
         if (config.cylinder_config.enable) {
-            std::cout << "[Pipeline] 开始提取圆柱（排除 " << used_indices.size() << " 点）..." << std::endl;
+            std::cout << "\n[Pipeline] ========== 开始提取圆柱 ==========" << std::endl;
+            std::cout << "[Pipeline] 排除已用点：" << used_indices.size() << std::endl;
+            auto cylinder_start = std::chrono::high_resolution_clock::now();
             auto cylinders =
                 extractCylinders<PointT>(filtered_cloud, normals, config.cylinder_config, used_indices);
+            auto cylinder_end = std::chrono::high_resolution_clock::now();
+            cylinder_time = std::chrono::duration<double, std::milli>(cylinder_end - cylinder_start).count();
             objects.insert(objects.end(), cylinders.begin(), cylinders.end());
             // 收集圆柱使用的点
             for (const auto& cylinder : cylinders) {
@@ -129,18 +142,37 @@ template <typename PointT> struct ObjectDetectionPipeline
                     used_indices.insert(idx);
                 }
             }
-            std::cout << "[Pipeline] 圆柱提取完成，检测到 " << cylinders.size() << " 个圆柱" << std::endl;
+            std::cout << "[Pipeline] 圆柱提取完成：检测到 " << cylinders.size() << " 个圆柱"
+                      << ", 耗时：" << cylinder_time << " ms" << std::endl;
         }
 
         // 提取圆环（排除墙面和圆柱已用点）
         if (config.circle_config.enable) {
-            std::cout << "[Pipeline] 开始提取圆环（排除 " << used_indices.size() << " 点）..." << std::endl;
+            std::cout << "\n[Pipeline] ========== 开始提取圆环 ==========" << std::endl;
+            std::cout << "[Pipeline] 排除已用点：" << used_indices.size() << std::endl;
+            auto circle_start = std::chrono::high_resolution_clock::now();
             auto circles = extractCircles<PointT>(filtered_cloud, normals, config.circle_config, used_indices);
+            auto circle_end = std::chrono::high_resolution_clock::now();
+            circle_time = std::chrono::duration<double, std::milli>(circle_end - circle_start).count();
             objects.insert(objects.end(), circles.begin(), circles.end());
-            std::cout << "[Pipeline] 圆环提取完成，检测到 " << circles.size() << " 个圆环" << std::endl;
+            std::cout << "[Pipeline] 圆环提取完成：检测到 " << circles.size() << " 个圆环"
+                      << ", 耗时：" << circle_time << " ms" << std::endl;
         }
 
+        std::cout << "\n[Pipeline] ========== 时间汇总 ==========" << std::endl;
+        std::cout << "下采样：" << downsample_time_ << " ms" << std::endl;
+        if (config.wall_config.enable) {
+            std::cout << "墙面提取：" << wall_time << " ms" << std::endl;
+        }
+        if (config.cylinder_config.enable) {
+            std::cout << "圆柱提取：" << cylinder_time << " ms" << std::endl;
+        }
+        if (config.circle_config.enable) {
+            std::cout << "圆环提取：" << circle_time << " ms" << std::endl;
+        }
         total_time_ = total_timer.elapsed();
+        std::cout << "总执行时间：" << total_time_ << " ms" << std::endl;
+        std::cout << "[Pipeline] ===============================\n" << std::endl;
 
         return true;
     }

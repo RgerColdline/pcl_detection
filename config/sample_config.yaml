@@ -12,29 +12,36 @@ downsample_config:
 
 wall_extraction:
   enable: true
-  using_normal: true
-  distance_threshold: 0.05
-  min_inliers: 800
+  using_normal: false
+  distance_threshold: 0.08
+  min_inliers: 500
   angle_threshold: 15.0
   axis: [0, 0, 1]
 
 cylinder_extraction:
   enable: true
   using_normal: true
-  distance_threshold: 0.04
-  min_inliers: 200
+  distance_threshold: 0.06
+  min_inliers: 100
   radius_min: 0.1
   radius_max: 0.4
   axis: [0, 0, 1]
-  eps_angle: 15.0
+  eps_angle: 25.0
 
 circle_extraction:
   enable: true
   using_normal: true
-  distance_threshold: 0.1
-  min_inliers: 100
+  distance_threshold: 0.03
+  min_inliers: 80
   radius_min: 0.2
   radius_max: 0.7
+  plane_distance_threshold: 0.06
+  plane_angle_threshold: 45.0
+  plane_normal_z_max: 0.7
+  min_coverage_angle: 240.0
+  ransac_iterations: 200
+  max_circles: 5
+  normal_tolerance: 0.5
 
 save_objects: true
 output_dir: "/home/jetson/detected_objects"

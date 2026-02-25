@@ -86,15 +86,31 @@ bool load_config(const std::string &config_file, core::ObjectDetectionConfig &co
         if (node["circle_extraction"]) {
             config.circle_config.enable = node["circle_extraction"]["enable"].as<bool>(true);
             config.circle_config.using_normal =
-                node["circle_extraction"]["using_normal"].as<bool>(false);
+                node["circle_extraction"]["using_normal"].as<bool>(true);
             config.circle_config.distance_threshold =
                 node["circle_extraction"]["distance_threshold"].as<float>(0.02f);
             config.circle_config.min_inliers =
-                node["circle_extraction"]["min_inliers"].as<int>(200);
+                node["circle_extraction"]["min_inliers"].as<int>(100);
             config.circle_config.radius_min =
-                node["circle_extraction"]["radius_min"].as<float>(0.1f);
+                node["circle_extraction"]["radius_min"].as<float>(0.2f);
             config.circle_config.radius_max =
-                node["circle_extraction"]["radius_max"].as<float>(0.5f);
+                node["circle_extraction"]["radius_max"].as<float>(0.7f);
+            // 平面提取参数
+            config.circle_config.plane_distance_threshold =
+                node["circle_extraction"]["plane_distance_threshold"].as<float>(0.05f);
+            config.circle_config.plane_angle_threshold =
+                node["circle_extraction"]["plane_angle_threshold"].as<float>(45.0f);
+            config.circle_config.plane_normal_z_max =
+                node["circle_extraction"]["plane_normal_z_max"].as<float>(0.7f);
+            // 圆环验证参数
+            config.circle_config.min_coverage_angle =
+                node["circle_extraction"]["min_coverage_angle"].as<float>(270.0f);
+            config.circle_config.ransac_iterations =
+                node["circle_extraction"]["ransac_iterations"].as<int>(500);
+            config.circle_config.max_circles =
+                node["circle_extraction"]["max_circles"].as<int>(10);
+            config.circle_config.normal_tolerance =
+                node["circle_extraction"]["normal_tolerance"].as<float>(0.5f);
         }
 
         // 其他配置
