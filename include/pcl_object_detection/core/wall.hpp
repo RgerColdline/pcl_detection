@@ -29,14 +29,6 @@ class Wall : public Object
            << "y + " << coefficients->values[2] << "z + " << coefficients->values[3] << " = 0\n";
     }
 
-    void getDimensions(float &width, float &height, float &depth) const override {
-        // 这里需要访问点云数据，可以考虑在提取时传入或后续设置
-        // 临时实现
-        width  = 0.0f;
-        height = 0.0f;
-        depth  = 0.0f;
-    }
-
     void getParameters(std::vector<float> &params) const override { params = coefficients->values; }
 
     // 墙面特有方法
@@ -48,6 +40,5 @@ class Wall : public Object
     double getDistance() const { return coefficients->values[3]; }
 };
 
-// 在object_base.cpp中实现工厂方法
 }  // namespace core
 }  // namespace pcl_object_detection

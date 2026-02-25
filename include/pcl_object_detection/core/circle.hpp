@@ -2,6 +2,8 @@
 
 #include "object_base.hpp"
 
+#include <Eigen/Geometry>
+
 namespace pcl_object_detection
 {
 namespace core
@@ -23,23 +25,28 @@ class Circle : public Object
     std::string getType() const override { return "Circle"; }
 
     void printDetails(std::ostream &os) const override {
-        os << "  圆环参数: 中心=(" << coefficients->values[0] << ", " << coefficients->values[1]
-           << ", 0), "
-           << "半径=" << coefficients->values[2] << "\n";
+        // SACMODEL_CIRCLE3D 系数格式：[center_x, center_y, center_z, normal_x, normal_y, normal_z, radius]
+        os << "  圆环参数：中心=(" << coefficients->values[0] << ", " << coefficients->values[1]
+           << ", " << coefficients->values[2] << "), "
+           << "法向量=(" << coefficients->values[3] << ", " << coefficients->values[4]
+           << ", " << coefficients->values[5] << "), "
+           << "半径=" << coefficients->values[6] << "\n";
     }
 
-    void getDimensions(float &width, float &height, float &depth) const override {
-        width  = 2 * coefficients->values[2];  // 直径
-        height = 0.0f;
-        depth  = width;                        // 暂时用直径作为深度
-    }
-
-    void getParameters(std::vector<float> &params) const override {
-        params = coefficients->values;
-    }
+    void getParameters(std::vector<float> &params) const override { params = coefficients->values; }
 
     // 圆环特有方法
-    double getRadius() const { return coefficients->values[2]; }
+    double getRadius() const { return coefficients->values[6]; }
+    
+    // 获取圆心
+    Eigen::Vector3f getCenter() const { 
+        return Eigen::Vector3f(coefficients->values[0], coefficients->values[1], coefficients->values[2]); 
+    }
+    
+    // 获取法向量
+    Eigen::Vector3f getNormal() const { 
+        return Eigen::Vector3f(coefficients->values[3], coefficients->values[4], coefficients->values[5]); 
+    }
 };
 
 }  // namespace core

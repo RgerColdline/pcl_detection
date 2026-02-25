@@ -30,15 +30,7 @@ class Cylinder : public Object
            << "半径=" << coefficients->values[6] << "\n";
     }
 
-    void getDimensions(float &width, float &height, float &depth) const override {
-        height = 0.0f;                         // 临时实现
-        width  = 2 * coefficients->values[6];  // 直径
-        depth  = width;                        // 暂时用直径作为深度
-    }
-
-    void getParameters(std::vector<float> &params) const override {
-        params = coefficients->values;
-    }
+    void getParameters(std::vector<float> &params) const override { params = coefficients->values; }
 
     // 圆柱特有方法
     double getRadius() const { return coefficients->values[6]; }

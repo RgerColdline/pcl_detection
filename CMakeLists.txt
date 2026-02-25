@@ -37,6 +37,10 @@ set(CORE_SOURCES
   src/core/object_base.cpp
 )
 
+set(IO_SOURCES
+  src/io/pointcloud_io.cpp
+)
+
 set(MAIN_SOURCES
   src/main.cpp
 )
@@ -48,6 +52,7 @@ set(MAIN_SOURCES
 # 添加可执行文件
 add_executable(${PROJECT_NAME}_node
   ${MAIN_SOURCES}
+  ${IO_SOURCES}
   ${CORE_SOURCES}
 )
 

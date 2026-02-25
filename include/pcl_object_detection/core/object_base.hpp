@@ -1,12 +1,15 @@
 #pragma once
 
+#include <pcl/common/common.h>  // 确保包含getMinMax3D
 #include <pcl/ModelCoefficients.h>
 #include <pcl/point_types.h>
 #include <pcl/PointIndices.h>
 
 #include <Eigen/Geometry>
+#include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace pcl_object_detection
 {
@@ -30,11 +33,15 @@ class Object
     Eigen::Vector3f color;                              // 显示颜色
     bool using_normal;                                  // 是否使用法向量
 
+    // 尺寸信息（在创建对象时计算）
+    float width                                                  = 0.0f;
+    float height                                                 = 0.0f;
+    float depth                                                  = 0.0f;
+
     // 虚函数 - 多态核心
-    virtual std::string getType() const                                         = 0;
-    virtual void printDetails(std::ostream &os) const                           = 0;
-    virtual void getDimensions(float &width, float &height, float &depth) const = 0;
-    virtual void getParameters(std::vector<float> &params) const                = 0;
+    virtual std::string getType() const                          = 0;
+    virtual void printDetails(std::ostream &os) const            = 0;
+    virtual void getParameters(std::vector<float> &params) const = 0;
 
     // 辅助方法
     int getPointCount() const { return inliers ? inliers->indices.size() : 0; }
@@ -42,15 +49,17 @@ class Object
     // 静态创建方法（工厂方法）
     static Ptr createWall(const std::string &name, typename pcl::PointIndices::Ptr inliers,
                           typename pcl::ModelCoefficients::Ptr coefficients, double extraction_time,
-                          bool using_normal = true);
+                          float width, float height, float depth, bool using_normal = true);
 
     static Ptr createCylinder(const std::string &name, typename pcl::PointIndices::Ptr inliers,
                               typename pcl::ModelCoefficients::Ptr coefficients,
-                              double extraction_time, bool using_normal = true);
+                              double extraction_time, float width, float height, float depth,
+                              bool using_normal = true);
 
     static Ptr createCircle(const std::string &name, typename pcl::PointIndices::Ptr inliers,
                             typename pcl::ModelCoefficients::Ptr coefficients,
-                            double extraction_time, bool using_normal = false);
+                            double extraction_time, float width, float height, float depth,
+                            bool using_normal = false);
 };
 
 }  // namespace core

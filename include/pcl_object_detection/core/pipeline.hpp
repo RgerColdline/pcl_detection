@@ -1,178 +1,161 @@
 #pragma once
 
 #include "circle_extraction.hpp"
+#include "config.hpp"
 #include "cylinder_extraction.hpp"
+#include "object_base.hpp"
+#include "timer.hpp"
 #include "wall_extraction.hpp"
 
+#include <pcl/common/common.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/point_types.h>
 
-#include <chrono>
 #include <memory>
 #include <vector>
 
 namespace pcl_object_detection
 {
-    namespace core
-    {
-        // 时间测量工具类
-        class Timer
-        {
-          public:
-            Timer() : start_(std::chrono::high_resolution_clock::now()) {}
+namespace core
+{
 
-            double elapsed() const {
-                auto end = std::chrono::high_resolution_clock::now();
-                return std::chrono::duration<double, std::milli>(end - start_).count();
-            }
+// 对象检测流水线
+template <typename PointT> struct ObjectDetectionPipeline
+{
+    ObjectDetectionConfig config;
 
-          private:
-            std::chrono::high_resolution_clock::time_point start_;
-        };
+    // 原始点云
+    typename pcl::PointCloud<PointT>::Ptr input_cloud;
+    // 下采样后的点云
+    typename pcl::PointCloud<PointT>::Ptr filtered_cloud;
+    // 法向量（如果需要）
+    typename pcl::PointCloud<pcl::Normal>::Ptr normals;
 
-        // 统一的配置结构
-        struct TimingConfig
-        {
-            bool enable     = false;
-            bool downsample = true;
-            bool walls      = true;
-            bool cylinders  = true;
-            bool circles    = true;
-            bool total      = true;
-        };
+    // 检测到的所有对象（统一容器）
+    std::vector<Object::Ptr> objects;
 
-        struct ObjectDetectionConfig
-        {
-            struct
-            {
-                std::string downsample_method = "standard";  // "standard" or "approx"
-                float leaf_size               = 0.05f;
-            } downsample_config;
+    // 时间测量结果
+    double downsample_time_ = 0.0;
+    double total_time_      = 0.0;
 
-            WallConfig wall_config;
-            CylinderConfig cylinder_config;
-            CircleConfig circle_config;
+    // 下采样点云
+    typename pcl::PointCloud<PointT>::Ptr
+    downsamplePointCloud(typename pcl::PointCloud<PointT>::Ptr cloud,
+                         const std::string &downsample_method, float leaf_size) {
 
-            TimingConfig timing_config;
+        typename pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>());
 
-            bool save_objects      = false;
-            std::string output_dir = "./objects/";
-        };
-
-        // 下采样点云
-        template <typename PointT>
-        typename pcl::PointCloud<PointT>::Ptr
-        downsamplePointCloud(typename pcl::PointCloud<PointT>::Ptr cloud,
-                             const std::string &downsample_method, float leaf_size) {
-            typename pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>());
-
-            if (downsample_method == "approx") {
-                pcl::ApproximateVoxelGrid<PointT> voxel;
-                voxel.setInputCloud(cloud);
-                voxel.setLeafSize(leaf_size, leaf_size, leaf_size);
-                voxel.filter(*cloud_filtered);
-            }
-            else {
-                pcl::VoxelGrid<PointT> voxel;
-                voxel.setInputCloud(cloud);
-                voxel.setLeafSize(leaf_size, leaf_size, leaf_size);
-                voxel.filter(*cloud_filtered);
-            }
-
-            return cloud_filtered;
+        if (downsample_method == "approx") {
+            pcl::ApproximateVoxelGrid<PointT> voxel;
+            voxel.setInputCloud(cloud);
+            voxel.setLeafSize(leaf_size, leaf_size, leaf_size);
+            voxel.filter(*cloud_filtered);
+        }
+        else {
+            pcl::VoxelGrid<PointT> voxel;
+            voxel.setInputCloud(cloud);
+            voxel.setLeafSize(leaf_size, leaf_size, leaf_size);
+            voxel.filter(*cloud_filtered);
         }
 
-        // 估计法向量
-        template <typename PointT>
-        typename pcl::PointCloud<pcl::Normal>::Ptr
-        estimateNormals(typename pcl::PointCloud<PointT>::Ptr cloud, int k_search = 50) {
-            typename pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-            pcl::NormalEstimation<PointT, pcl::Normal> ne;
-            ne.setInputCloud(cloud);
-            typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
-            ne.setSearchMethod(tree);
-            ne.setKSearch(k_search);
-            ne.compute(*normals);
+        return cloud_filtered;
+    }
 
-            return normals;
+    // 估计法向量
+    typename pcl::PointCloud<pcl::Normal>::Ptr
+    estimateNormals(typename pcl::PointCloud<PointT>::Ptr cloud, int k_search = 50) {
+
+        typename pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>());
+        pcl::NormalEstimation<PointT, pcl::Normal> ne;
+        ne.setInputCloud(cloud);
+        typename pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>());
+        ne.setSearchMethod(tree);
+        ne.setKSearch(k_search);
+        ne.compute(*normals);
+
+        return normals;
+    }
+
+    // 运行整个流水线
+    bool run(typename pcl::PointCloud<PointT>::Ptr input) {
+        Timer total_timer;
+
+        input_cloud = input;
+
+        // 1. 下采样
+        Timer downsample_timer;
+        filtered_cloud =
+            downsamplePointCloud(input_cloud, config.downsample_config.downsample_method,
+                                 config.downsample_config.leaf_size);
+        downsample_time_  = downsample_timer.elapsed();
+
+        // 2. 估计法向量（如果需要）
+        bool need_normals = config.wall_config.using_normal ||
+                            config.cylinder_config.using_normal ||
+                            config.circle_config.using_normal;
+        if (need_normals) {
+            normals = estimateNormals(filtered_cloud);
         }
 
-        // 对象检测流水线
-        template <typename PointT> struct ObjectDetectionPipeline
-        {
-            using WallInfoT     = WallInfo<PointT>;
-            using CylinderInfoT = CylinderInfo<PointT>;
-            using CircleInfoT   = CircleInfo<PointT>;
+        // 3. 提取所有对象（使用点云共享排除机制）
+        objects.clear();
+        std::set<int> used_indices;  // 已使用的点索引
 
-            ObjectDetectionConfig config;
-
-            // 原始点云
-            typename pcl::PointCloud<PointT>::Ptr input_cloud;
-            // 下采样后的点云
-            typename pcl::PointCloud<PointT>::Ptr filtered_cloud;
-            // 法向量（如果需要）
-            typename pcl::PointCloud<pcl::Normal>::Ptr normals;
-
-            // 检测到的对象
-            std::vector<WallInfoT> walls;
-            std::vector<CylinderInfoT> cylinders;
-            std::vector<CircleInfoT> circles;
-
-            // 时间测量结果
-            double downsample_time_          = 0.0;
-            double wall_extraction_time_     = 0.0;
-            double cylinder_extraction_time_ = 0.0;
-            double circle_extraction_time_   = 0.0;
-            double total_time_               = 0.0;
-
-            // 运行整个流水线
-            bool run(typename pcl::PointCloud<PointT>::Ptr input) {
-                Timer total_timer;
-                input_cloud = input;
-
-                // 1. 下采样
-                Timer downsample_timer;
-                filtered_cloud = downsamplePointCloud<PointT>(
-                    input_cloud, config.downsample_config.downsample_method,
-                    config.downsample_config.leaf_size);
-                downsample_time_ = downsample_timer.elapsed();
-
-                // 2. 估计法向量（如果需要）
-                bool need_normals =
-                    config.wall_config.using_normal || config.cylinder_config.using_normal;
-                if (need_normals) {
-                    normals = estimateNormals<PointT>(filtered_cloud);
+        // 提取墙面
+        if (config.wall_config.enable) {
+            std::cout << "[Pipeline] 开始提取墙面..." << std::endl;
+            auto walls = extractWalls<PointT>(filtered_cloud, normals, config.wall_config);
+            objects.insert(objects.end(), walls.begin(), walls.end());
+            // 收集墙面使用的点
+            for (const auto& wall : walls) {
+                for (int idx : wall->inliers->indices) {
+                    used_indices.insert(idx);
                 }
-
-                // 3. 提取墙面
-                if (config.wall_config.enable) {
-                    Timer wall_timer;
-                    walls = extractWalls<PointT>(filtered_cloud, normals, config.wall_config);
-                    wall_extraction_time_ = wall_timer.elapsed();
-                }
-
-                // 4. 提取圆柱
-                if (config.cylinder_config.enable) {
-                    Timer cylinder_timer;
-                    cylinders =
-                        extractCylinders<PointT>(filtered_cloud, normals, config.cylinder_config);
-                    cylinder_extraction_time_ = cylinder_timer.elapsed();
-                }
-
-                // 5. 提取圆
-                if (config.circle_config.enable) {
-                    Timer circle_timer;
-                    circles = extractCircles<PointT>(filtered_cloud, config.circle_config);
-                    circle_extraction_time_ = circle_timer.elapsed();
-                }
-                total_time_ = total_timer.elapsed();
-
-
-                return true;
             }
-        };
+            std::cout << "[Pipeline] 墙面提取完成，检测到 " << walls.size() 
+                      << " 个墙面，使用 " << used_indices.size() << " 点" << std::endl;
+        }
 
-    }  // namespace core
+        // 提取圆柱（排除墙面已用点）
+        if (config.cylinder_config.enable) {
+            std::cout << "[Pipeline] 开始提取圆柱（排除 " << used_indices.size() << " 点）..." << std::endl;
+            auto cylinders =
+                extractCylinders<PointT>(filtered_cloud, normals, config.cylinder_config, used_indices);
+            objects.insert(objects.end(), cylinders.begin(), cylinders.end());
+            // 收集圆柱使用的点
+            for (const auto& cylinder : cylinders) {
+                for (int idx : cylinder->inliers->indices) {
+                    used_indices.insert(idx);
+                }
+            }
+            std::cout << "[Pipeline] 圆柱提取完成，检测到 " << cylinders.size() << " 个圆柱" << std::endl;
+        }
+
+        // 提取圆环（排除墙面和圆柱已用点）
+        if (config.circle_config.enable) {
+            std::cout << "[Pipeline] 开始提取圆环（排除 " << used_indices.size() << " 点）..." << std::endl;
+            auto circles = extractCircles<PointT>(filtered_cloud, normals, config.circle_config, used_indices);
+            objects.insert(objects.end(), circles.begin(), circles.end());
+            std::cout << "[Pipeline] 圆环提取完成，检测到 " << circles.size() << " 个圆环" << std::endl;
+        }
+
+        total_time_ = total_timer.elapsed();
+
+        return true;
+    }
+
+    // 辅助方法：获取特定类型对象
+    template <typename T> std::vector<std::shared_ptr<T>> getObjectsByType() const {
+        std::vector<std::shared_ptr<T>> result;
+        for (const auto &obj : objects) {
+            if (auto ptr = std::dynamic_pointer_cast<T>(obj)) {
+                result.push_back(ptr);
+            }
+        }
+        return result;
+    }
+};
+
+}  // namespace core
 }  // namespace pcl_object_detection
