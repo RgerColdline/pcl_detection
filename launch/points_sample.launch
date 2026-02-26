@@ -1,5 +1,8 @@
 <launch>
-    <!-- 无人机飞行控制节点 -->
+    <!-- 无人机飞行控制 + 点云采样节点 -->
     <node name="points_sample" pkg="pcl_detection" type="pcl_detection_samples_node" output="screen">
+        <!-- 点云采样配置 -->
+        <param name="enable_livox_callback" value="true" />
+        <param name="save_sample_param" value="/livox/save_sample" />
     </node>
 </launch>

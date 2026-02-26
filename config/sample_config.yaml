@@ -56,3 +56,23 @@ circle_extraction:
 
 save_objects: true
 output_dir: "/home/jetson/detected_objects"
+
+# ============================================================================
+# 点云采样配置（points_samples 节点）
+# ============================================================================
+# 用法：
+#   1. 在 launch 文件中设置参数：
+#      <param name="enable_livox_callback" value="true" />
+#
+#   2. 或命令行启动时设置：
+#      roslaunch pcl_detection points_sample.launch enable_livox_callback:=true
+#
+#   3. 触发保存点云：
+#      rosparam set /livox/save_sample true
+# ============================================================================
+points_sample_config:
+  # 是否启用 Livox 点云回调（false=不处理点云，提高性能）
+  enable_livox_callback: true
+  
+  # 触发保存的 ROS 参数名称
+  save_sample_param: "/livox/save_sample"

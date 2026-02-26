@@ -1,4 +1,4 @@
-#include "points_sample.h"
+#include "pcl_object_detection/nodes/points_sample.h"
 
 #include <geometry_msgs/PoseStamped.h>
 #include <livox_ros_driver2/CustomMsg.h>
@@ -14,10 +14,26 @@
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/SetMode.h>
 
-constexpr float ALTITUDE  = 0.7f;
-constexpr float TARGET_X  = 1.0f;
-constexpr float HOVER_ERR = 0.1f;
+// ============================================================================
+// 飞行参数配置
+// ============================================================================
+constexpr float ALTITUDE  = 0.7f;   // 悬停高度 (米)
+constexpr float TARGET_X  = 1.0f;   // 前进目标距离 (米)
+constexpr float HOVER_ERR = 0.1f;   // 悬停容差 (米)
 
+// ============================================================================
+// 点云采样参数配置（可通过 YAML 配置文件调节）
+// ============================================================================
+// 在 config/sample_config.yaml 中添加以下参数：
+// # ============================================================================
+// # 点云采样配置（points_samples 节点）
+// # ============================================================================
+// points_sample_config:
+//   enable_livox_callback: true     # 是否启用 Livox 点云回调（false=不处理点云）
+//   save_sample_param: "/livox/save_sample"  # 触发保存的 ROS 参数名称
+// ============================================================================
+
+// 全局变量
 mavros_msgs::State current_state;
 nav_msgs::Odometry local_pos;
 double yaw = 0.0, roll = 0.0, pitch = 0.0;
@@ -27,6 +43,10 @@ bool is_initialized = false;
 mavros_msgs::PositionTarget setpoint;
 
 ros::NodeHandle *nh_ptr = nullptr;
+
+// 点云采样控制参数
+bool g_enable_livox_callback = true;  // 默认启用 Livox 回调
+std::string g_save_sample_param = "/livox/save_sample";
 
 void state_cb(const mavros_msgs::State::ConstPtr &msg) {
     current_state = *msg;
@@ -47,6 +67,11 @@ void local_pos_cb(const nav_msgs::Odometry::ConstPtr &msg) {
 }
 
 void livox_cb_wrapper(const livox_ros_driver2::CustomMsg::ConstPtr &msg) {
+    // 根据参数决定是否处理 Livox 点云
+    if (!g_enable_livox_callback) {
+        return;  // 禁用回调，直接返回
+    }
+    
     if (nh_ptr) {
         livox_cb(msg, *nh_ptr);
     }
@@ -76,14 +101,37 @@ int main(int argc, char **argv) {
 
     ros::init(argc, argv, "simple_flight");
     ros::NodeHandle nh;
+    ros::NodeHandle pnh("~");
 
     nh_ptr = &nh;
-    nh.setParam(SAVE_SAMPLE_PARAM, false);
+    
+    // ========================================================================
+    // 加载点云采样配置参数
+    // ========================================================================
+    // 从 YAML 配置文件或 launch 文件参数加载
+    // 配置示例见文件顶部注释
+    // ========================================================================
+    pnh.param("enable_livox_callback", g_enable_livox_callback, true);
+    pnh.param("save_sample_param", g_save_sample_param, std::string("/livox/save_sample"));
+    
+    ROS_INFO("Point cloud sampling: %s", g_enable_livox_callback ? "ENABLED" : "DISABLED");
+    ROS_INFO("Save sample parameter: %s", g_save_sample_param.c_str());
+    
+    // 初始化保存参数
+    nh.setParam(g_save_sample_param, false);
 
     ros::Subscriber state_sub = nh.subscribe("mavros/state", 10, state_cb);
     ros::Subscriber pos_sub = nh.subscribe("/mavros/local_position/odom", 10, local_pos_cb);
-    ros::Subscriber livox_sub = nh.subscribe<livox_ros_driver2::CustomMsg>(
-        "/livox/lidar", 10, livox_cb_wrapper);
+    
+    // 根据配置决定是否订阅 Livox 点云
+    ros::Subscriber livox_sub;
+    if (g_enable_livox_callback) {
+        livox_sub = nh.subscribe<livox_ros_driver2::CustomMsg>(
+            "/livox/lidar", 10, livox_cb_wrapper);
+        ROS_INFO("Livox subscriber: ENABLED");
+    } else {
+        ROS_INFO("Livox subscriber: DISABLED (to enable, set enable_livox_callback:=true)");
+    }
 
     ros::Publisher setpoint_pub =
         nh.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 10);
