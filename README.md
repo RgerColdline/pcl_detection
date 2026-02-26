@@ -14,7 +14,12 @@
 ```bash
 cd 你的工作空间
 source devel/setup.bash  # 或 setup.zsh
+
+# 启动障碍物检测节点
 roslaunch pcl_detection object_detector.launch
+
+# （可选）启动障碍物监听测试节点
+roslaunch pcl_detection obstacle_listener.launch
 ```
 
 ## 功能特性

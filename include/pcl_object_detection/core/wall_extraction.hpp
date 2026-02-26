@@ -16,7 +16,7 @@ namespace pcl_object_detection
 namespace core
 {
 
-// 提取多个垂直墙面（优化版：不使用法向量）
+// 提取多个垂直墙面（支持使用或不使用法向量）
 template <typename PointT>
 std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr cloud,
                                       typename pcl::PointCloud<pcl::Normal>::Ptr normals,
@@ -29,14 +29,8 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         return walls;
     }
 
-    // 使用不带法向量的平面分割（更快）
-    pcl::SACSegmentation<PointT> seg;
-
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(config.distance_threshold);
-    seg.setMaxIterations(200);  // 大幅减少迭代
+    bool use_normals = config.using_normal && normals;
+    int max_iterations = use_normals ? 200 : 500;  // 不使用法向量时增加迭代次数
 
     // 创建初始索引（排除已用点）
     typename pcl::PointIndices::Ptr all_indices(new pcl::PointIndices);
@@ -56,28 +50,41 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
     typename pcl::PointIndices::Ptr current_indices = all_indices;
 
     int wall_num = 1;
-    int max_walls = 4;  // 限制最大墙面数量
+    int max_walls = 4;
 
-    // 角度阈值：法向量 Z 分量最大值（竖直墙面法向量接近水平）
+    // 角度阈值转换为弧度（用于判断法向量是否接近水平）
     float max_z_component = std::sin(config.angle_threshold * M_PI / 180.0f);
 
-
     while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && wall_num <= max_walls) {
-        // 设置当前索引
-        seg.setIndices(current_indices);
-        seg.setInputCloud(cloud);
-
-        // 执行分割
         typename pcl::PointIndices::Ptr inliers_local(new pcl::PointIndices);
         typename pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
-        auto start_time = std::chrono::high_resolution_clock::now();
-        seg.segment(*inliers_local, *coefficients);
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+        if (use_normals) {
+            // 使用法向量的平面拟合
+            pcl::SACSegmentationFromNormals<PointT, pcl::Normal> seg;
+            seg.setOptimizeCoefficients(true);
+            seg.setModelType(pcl::SACMODEL_PLANE);
+            seg.setMethodType(pcl::SAC_RANSAC);
+            seg.setDistanceThreshold(config.distance_threshold);
+            seg.setMaxIterations(max_iterations);
+            seg.setIndices(current_indices);
+            seg.setInputCloud(cloud);
+            seg.setInputNormals(normals);
+            seg.segment(*inliers_local, *coefficients);
+        } else {
+            // 不使用法向量的平面拟合
+            pcl::SACSegmentation<PointT> seg;
+            seg.setOptimizeCoefficients(true);
+            seg.setModelType(pcl::SACMODEL_PLANE);
+            seg.setMethodType(pcl::SAC_RANSAC);
+            seg.setDistanceThreshold(config.distance_threshold);
+            seg.setMaxIterations(max_iterations);
+            seg.setIndices(current_indices);
+            seg.setInputCloud(cloud);
+            seg.segment(*inliers_local, *coefficients);
+        }
 
-
-        // 检查内点数量
+        // 检查是否找到足够的内点
         if (inliers_local->indices.empty() ||
             inliers_local->indices.size() < static_cast<size_t>(config.min_inliers)) {
             break;
@@ -88,7 +95,7 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         float z_component = std::abs(normal[2]);
 
         if (z_component > max_z_component) {
-            // 移除这些点
+            // 法向量太接近 Z 轴，这是水平面（地面/天花板），不是墙面，跳过
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
             for (int idx : current_indices->indices) {
@@ -139,11 +146,16 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         float height = max_pt[2] - min_pt[2];
         float depth = 0.0f;
 
+        // 计时
+        auto start_time = std::chrono::high_resolution_clock::now();
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+
         // 保存墙面信息
         auto wall = Object::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
-                                       elapsed, width, height, depth, false);  // 不使用法向量
-        walls.push_back(wall);
+                                       elapsed, width, height, depth, use_normals);
 
+        walls.push_back(wall);
 
         // 从当前索引中移除这些点
         std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());

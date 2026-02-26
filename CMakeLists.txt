@@ -72,7 +72,6 @@ set(VIZ_SOURCES
 
 set(FLIGHT_SOURCES
   src/nodes/points_samples.cpp
-  src/nodes/points_sample.cpp
 )
 
 # 方法 2: 自动收集（省事，但可能误收）
@@ -138,13 +137,28 @@ target_link_libraries(${PROJECT_NAME}_samples_node
   ${YAML_CPP_LIBRARIES}
 )
 
+# 障碍物监听测试节点
+add_executable(${PROJECT_NAME}_obstacle_listener
+  src/nodes/obstacle_listener.cpp
+)
+
+target_link_libraries(${PROJECT_NAME}_obstacle_listener
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+add_dependencies(${PROJECT_NAME}_obstacle_listener
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+)
+
 # 编译选项
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
 # 安装规则
-install(TARGETS ${PROJECT_NAME}_node ${PROJECT_NAME}_detector_node ${PROJECT_NAME}_visualizer_node ${PROJECT_NAME}_samples_node
+install(TARGETS ${PROJECT_NAME}_node ${PROJECT_NAME}_detector_node ${PROJECT_NAME}_visualizer_node ${PROJECT_NAME}_samples_node ${PROJECT_NAME}_obstacle_listener
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 install(DIRECTORY include/${PROJECT_NAME}/

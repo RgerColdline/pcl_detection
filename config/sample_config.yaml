@@ -35,18 +35,18 @@ wall_extraction:
 # 圆柱检测配置
 cylinder_extraction:
   enable: true  #是否启用检测圆柱
-  using_normal: false  #是否使用法线信息（不建议）
+  using_normal: true  #是否使用法线信息（建议使用，可提高检测精度）
   distance_threshold: 0.06  #距离阈值，点到圆柱模型的最大允许距离
   min_inliers: 100  #点数阈值，圆柱内点数量必须大于此值
   radius_min: 0.1  #最小半径（米），小于此半径的圆柱不会被检测
-  radius_max: 0.4  #最大半径（米），大于此半径的圆柱不会被检测
+  radius_max: 1  #最大半径（米），大于此半径的圆柱不会被检测
   axis: [0, 0, 1]  #圆柱轴向参考向量，用于约束圆柱方向
   eps_angle: 25.0  #角度容差（度），圆柱轴向与参考轴的最大允许夹角
 
 # 圆环检测配置
 circle_extraction:
   enable: true  #是否启用检测圆环
-  using_normal: false  #是否使用法线信息（不建议）
+  using_normal: true  #是否使用法线信息（建议使用，可提高检测精度）
   distance_threshold: 0.03  #距离阈值，点到圆环模型的最大允许距离
   min_inliers: 80  #点数阈值，圆环内点数量必须大于此值
   radius_min: 0.2  #最小半径（米），小于此半径的圆环不会被检测

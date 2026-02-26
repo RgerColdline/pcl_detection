@@ -1,0 +1,6 @@
+<launch>
+    <!-- 障碍物监听测试节点 -->
+    <node pkg="pcl_detection" type="pcl_detection_obstacle_listener" name="obstacle_listener" output="screen">
+        <!-- 可在此处添加参数配置 -->
+    </node>
+</launch>
