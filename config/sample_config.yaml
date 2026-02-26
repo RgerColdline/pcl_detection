@@ -1,3 +1,4 @@
+# 控制日志是否输出各部分处理时间（目前无效）
 timing:
   enable: true
   downsample: true
@@ -17,44 +18,48 @@ ros_config:
   # Livox 点云转换日志级别：0=无输出，1=只输出摘要（input/output），2=输出前 5 个点详情
   livox_debug_level: 2
 
+# 下采样配置
 downsample_config:
-  downsample_method: "standard"
-  leaf_size: 0.05
+  downsample_method: "standard"  #"standard"或"approx"(更快精度略低)
+  leaf_size: 0.05  #升高提速，降低提升精度
 
+# 墙体检测配置
 wall_extraction:
-  enable: true
-  using_normal: false
-  distance_threshold: 0.08
-  min_inliers: 500
-  angle_threshold: 15.0
-  axis: [0, 0, 1]
+  enable: true  #是否启用检测墙体
+  using_normal: false  #是否使用法线信息(不建议)
+  distance_threshold: 0.08  #距离阈值（目前我也不知道有啥用）
+  min_inliers: 500  #点数阈值，低于这个点数的平面不算在内
+  angle_threshold: 15.0 #角度阈值，单位度，平面法线与垂直方向的夹角必须小于这个值才算墙体
+  axis: [0, 0, 1]  #参考的与墙面平行的向量
 
+# 圆柱检测配置
 cylinder_extraction:
-  enable: true
-  using_normal: true
-  distance_threshold: 0.06
-  min_inliers: 100
-  radius_min: 0.1
-  radius_max: 0.4
-  axis: [0, 0, 1]
-  eps_angle: 25.0
+  enable: true  #是否启用检测圆柱
+  using_normal: false  #是否使用法线信息（不建议）
+  distance_threshold: 0.06  #距离阈值，点到圆柱模型的最大允许距离
+  min_inliers: 100  #点数阈值，圆柱内点数量必须大于此值
+  radius_min: 0.1  #最小半径（米），小于此半径的圆柱不会被检测
+  radius_max: 0.4  #最大半径（米），大于此半径的圆柱不会被检测
+  axis: [0, 0, 1]  #圆柱轴向参考向量，用于约束圆柱方向
+  eps_angle: 25.0  #角度容差（度），圆柱轴向与参考轴的最大允许夹角
 
+# 圆环检测配置
 circle_extraction:
-  enable: true
-  using_normal: true
-  distance_threshold: 0.03
-  min_inliers: 80
-  radius_min: 0.2
-  radius_max: 0.7
-  plane_distance_threshold: 0.06
-  plane_angle_threshold: 45.0
-  plane_normal_z_max: 0.7
-  min_coverage_angle: 240.0
-  ransac_iterations: 200
-  max_circles: 5
-  normal_tolerance: 0.5
+  enable: true  #是否启用检测圆环
+  using_normal: false  #是否使用法线信息（不建议）
+  distance_threshold: 0.03  #距离阈值，点到圆环模型的最大允许距离
+  min_inliers: 80  #点数阈值，圆环内点数量必须大于此值
+  radius_min: 0.2  #最小半径（米），小于此半径的圆环不会被检测
+  radius_max: 0.7  #最大半径（米），大于此半径的圆环不会被检测
+  plane_distance_threshold: 0.06  #平面提取距离阈值，用于提取圆环所在平面
+  plane_angle_threshold: 45.0  #平面角度阈值（度），平面法线与垂直方向的最大夹角
+  plane_normal_z_max: 0.7  #平面法向量 Z 分量最大值，用于筛选竖直平面
+  min_coverage_angle: 240.0  #最小覆盖角度（度），圆环必须覆盖至少这么多角度
+  ransac_iterations: 200  #RANSAC 迭代次数，越高越准确但越慢
+  max_circles: 5  #最大检测圆环数量
+  normal_tolerance: 0.5  #法向量容差，用于验证圆环法向量方向
 
-save_objects: true
+save_objects: false #是否保存检测到的对象点云
 output_dir: "/home/jetson/detected_objects"
 
 # ============================================================================
@@ -71,8 +76,5 @@ output_dir: "/home/jetson/detected_objects"
 #      rosparam set /livox/save_sample true
 # ============================================================================
 points_sample_config:
-  # 是否启用 Livox 点云回调（false=不处理点云，提高性能）
-  enable_livox_callback: true
-  
-  # 触发保存的 ROS 参数名称
-  save_sample_param: "/livox/save_sample"
+  enable_livox_callback: true # 是否启用 Livox 点云回调
+  save_sample_param: "/livox/save_sample" # 触发保存的 ROS 参数名称
