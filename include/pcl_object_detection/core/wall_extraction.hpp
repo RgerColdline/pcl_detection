@@ -2,6 +2,8 @@
 
 #include "config.hpp"
 #include "object_base.hpp"
+#include "extractors_base.hpp"
+#include "timer.hpp"
 
 #include <pcl/common/common.h>
 #include <pcl/filters/extract_indices.h>
@@ -56,6 +58,8 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
     float max_z_component = std::sin(config.angle_threshold * M_PI / 180.0f);
 
     while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && wall_num <= max_walls) {
+        Timer timer;  // 开始计时当前墙面的提取
+
         typename pcl::PointIndices::Ptr inliers_local(new pcl::PointIndices);
         typename pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
@@ -107,6 +111,20 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
             continue;
         }
 
+        // 二次检查：确保内点数量足够（防止 RANSAC 误判）
+        if (inliers_local->indices.size() < static_cast<size_t>(config.min_inliers * 1.5f)) {
+            // 内点数量刚过阈值，质量可能不好，跳过
+            std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
+            typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
+            for (int idx : current_indices->indices) {
+                if (inlier_set.find(idx) == inlier_set.end()) {
+                    new_indices->indices.push_back(idx);
+                }
+            }
+            current_indices = new_indices;
+            continue;
+        }
+
         // 检查是否与已提取的墙面重复
         bool is_duplicate = false;
         for (const auto &wall : walls) {
@@ -146,14 +164,9 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         float height = max_pt[2] - min_pt[2];
         float depth = 0.0f;
 
-        // 计时
-        auto start_time = std::chrono::high_resolution_clock::now();
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
-        // 保存墙面信息
+        // 保存墙面信息（记录提取时间）
         auto wall = Object::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
-                                       elapsed, width, height, depth, use_normals);
+                                       timer.elapsed(), width, height, depth, use_normals);
 
         walls.push_back(wall);
 
@@ -171,6 +184,29 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
 
     return walls;
 }
+
+// ============================================================================
+// 墙面提取器（封装 extractWalls 函数）
+// ============================================================================
+template <typename PointT>
+class WallExtractor : public IObjectExtractor<PointT> {
+    WallConfig config_;
+public:
+    using PointCloudPtrT = typename pcl::PointCloud<PointT>::Ptr;
+    using NormalCloudPtrT = typename pcl::PointCloud<pcl::Normal>::Ptr;
+    
+    explicit WallExtractor(const WallConfig& config) : config_(config) {}
+    
+    std::vector<Object::Ptr> extract(
+        PointCloudPtrT cloud,
+        NormalCloudPtrT normals,
+        const std::set<int>& excluded,
+        PointCloudPtrT /*temp_cloud1*/ = nullptr,
+        PointCloudPtrT /*temp_cloud2*/ = nullptr) override 
+    {
+        return extractWalls<PointT>(cloud, normals, config_, excluded);
+    }
+};
 
 }  // namespace core
 }  // namespace pcl_object_detection

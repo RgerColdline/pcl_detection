@@ -19,6 +19,13 @@ struct TimingConfig
     bool total      = true;
 };
 
+// 下采样配置
+struct DownsampleConfig
+{
+    bool approx     = false;  // true=ApproximateVoxelGrid, false=VoxelGrid
+    float leaf_size = 0.05f;
+};
+
 // 墙面配置
 struct WallConfig
 {
@@ -27,7 +34,7 @@ struct WallConfig
     float distance_threshold = 0.02f;
     int min_inliers          = 200;
     float angle_threshold    = 15.0f;
-    std::vector<float> axis  = {0.0f, 0.0f, 1.0f};  // 默认Z轴
+    std::vector<float> axis  = {0.0f, 0.0f, 1.0f};  // 默认 Z 轴
 };
 
 // 圆柱配置
@@ -39,7 +46,7 @@ struct CylinderConfig
     int min_inliers          = 200;
     float radius_min         = 0.05f;
     float radius_max         = 0.2f;
-    std::vector<float> axis  = {0.0f, 0.0f, 1.0f};  // 默认Z轴
+    std::vector<float> axis  = {0.0f, 0.0f, 1.0f};  // 默认 Z 轴
     float eps_angle          = 15.0f;
 };
 
@@ -52,12 +59,12 @@ struct CircleConfig
     int min_inliers          = 100;
     float radius_min         = 0.1f;
     float radius_max         = 0.7f;
-    
+
     // 平面提取参数
     float plane_distance_threshold = 0.05f;  // 平面提取距离阈值
     float plane_angle_threshold    = 45.0f;  // 平面法向量与 Z 轴的最大夹角（度）
     float plane_normal_z_max       = 0.7f;   // 平面法向量 Z 分量最大值
-    
+
     // 圆环验证参数
     float min_coverage_angle     = 270.0f;   // 最小圆周覆盖角度（度）
     int ransac_iterations        = 500;      // RANSAC 迭代次数
@@ -68,11 +75,7 @@ struct CircleConfig
 // 统一的配置结构
 struct ObjectDetectionConfig
 {
-    struct
-    {
-        std::string downsample_method = "standard";  // "standard" or "approx"
-        float leaf_size               = 0.05f;
-    } downsample_config;
+    DownsampleConfig downsample_config;
 
     WallConfig wall_config;
     CylinderConfig cylinder_config;

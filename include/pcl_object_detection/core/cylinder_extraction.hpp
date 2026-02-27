@@ -2,6 +2,10 @@
 
 #include "config.hpp"
 #include "object_base.hpp"
+#include "extractors_base.hpp"
+#include "timer.hpp"
+
+#include <ros/ros.h>
 
 #include <pcl/common/common.h>
 #include <pcl/filters/extract_indices.h>
@@ -29,11 +33,14 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
         return cylinders;
     }
 
-    bool use_normals = config.using_normal && normals;
-    int max_iterations = use_normals ? 300 : 500;  // 不使用法向量时增加迭代次数
+    // 圆柱提取必须使用法向量
+    bool use_normals = true;
+    if (!normals) {
+        ROS_WARN("圆柱提取：法向量为空，无法提取圆柱");
+        return cylinders;
+    }
     
-    ROS_DEBUG("Cylinder extraction: using_normal=%d, normals=%p, use_normals=%d",
-              config.using_normal, (void*)normals.get(), use_normals ? 1 : 0);
+    int max_iterations = 300;  // 使用法向量时的迭代次数
 
     // 创建初始索引（排除已用点）
     typename pcl::PointIndices::Ptr all_indices(new pcl::PointIndices);
@@ -54,6 +61,8 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
     int max_cylinders = 5;
 
     while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && cylinder_num <= max_cylinders) {
+        Timer timer;  // 开始计时当前圆柱的提取
+
         typename pcl::PointIndices::Ptr inliers_local(new pcl::PointIndices);
         typename pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
@@ -100,6 +109,12 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
         }
         current_indices = new_indices;
 
+        // 二次检查：确保内点数量足够（防止 RANSAC 误判）
+        if (inliers_local->indices.size() < static_cast<size_t>(config.min_inliers * 1.5f)) {
+            // 内点数量刚过阈值，质量可能不好，跳过
+            continue;
+        }
+
         // 计算尺寸
         Eigen::Vector4f min_pt, max_pt;
         pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
@@ -108,12 +123,9 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
         float width = 2 * coefficients->values[6];
         float depth = width;
 
-        auto start = std::chrono::high_resolution_clock::now();
-        auto end = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<double, std::milli>(end - start).count();
-
+        // 创建圆柱对象（记录提取时间）
         auto cylinder = Object::createCylinder("cylinder_" + std::to_string(cylinder_num),
-                                               inliers_local, coefficients, elapsed, width, height,
+                                               inliers_local, coefficients, timer.elapsed(), width, height,
                                                depth, use_normals);
         cylinders.push_back(cylinder);
 
@@ -122,6 +134,29 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
 
     return cylinders;
 }
+
+// ============================================================================
+// 圆柱提取器（封装 extractCylinders 函数）
+// ============================================================================
+template <typename PointT>
+class CylinderExtractor : public IObjectExtractor<PointT> {
+    CylinderConfig config_;
+public:
+    using PointCloudPtrT = typename pcl::PointCloud<PointT>::Ptr;
+    using NormalCloudPtrT = typename pcl::PointCloud<pcl::Normal>::Ptr;
+    
+    explicit CylinderExtractor(const CylinderConfig& config) : config_(config) {}
+    
+    std::vector<Object::Ptr> extract(
+        PointCloudPtrT cloud,
+        NormalCloudPtrT normals,
+        const std::set<int>& excluded,
+        PointCloudPtrT /*temp_cloud1*/ = nullptr,
+        PointCloudPtrT /*temp_cloud2*/ = nullptr) override 
+    {
+        return extractCylinders<PointT>(cloud, normals, config_, excluded);
+    }
+};
 
 }  // namespace core
 }  // namespace pcl_object_detection

@@ -1,9 +1,0 @@
-<launch>
-    <!-- <node name="pcl_node" pkg="pcl_detection" type="pcl_detection_node" output="screen">
-        <rosparam command="load" file="$(find pcl_detection)/config/test.yaml" />
-    </node> -->
-    <!-- <node name="pcl_node" pkg="pcl_detection" type="test_pipeline" output="screen">
-        <rosparam command="load" file="$(find pcl_detection)/config/test.yaml" />
-    </node> -->
-    <test test-name="test_pipeline" pkg="pcl_detection" type="test_pipeline" />
-</launch>

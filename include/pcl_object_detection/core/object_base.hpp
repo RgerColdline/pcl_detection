@@ -5,6 +5,7 @@
 #include <pcl/point_types.h>
 #include <pcl/PointIndices.h>
 
+#include <chrono>
 #include <Eigen/Geometry>
 #include <iostream>
 #include <memory>

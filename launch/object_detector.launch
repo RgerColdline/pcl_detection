@@ -1,21 +1,8 @@
 <launch>
     <!-- 对象检测节点 -->
     <node pkg="pcl_detection" type="pcl_detection_detector_node" name="object_detector" output="screen">
-        <!-- 配置文件路径 -->
-        <param name="config_file" value="$(find pcl_detection)/config/sample_config.yaml" />
-        
-        <!-- 话题配置 -->
-        <param name="input_topic" value="/livox/lidar" />
-        <param name="result_topic" value="/pcl_detection/result" />
-        <param name="objects_topic" value="/pcl_detection/objects" />
-        
-        <!-- 跳帧处理（0=不跳帧，1=每 2 帧处理 1 次） -->
-        <param name="skip_frames" value="0" />
-        
-        <!-- 日志控制参数 -->
-        <param name="log_skip_frames" value="19" />      <!-- 每 20 帧输出一次摘要 -->
-        <param name="log_interval_sec" value="2.0" />    <!-- 每 2 秒输出一次 -->
-        <param name="livox_debug_level" value="0" />     <!-- 0=无 Livox 日志，1=摘要，2=详细 -->
+        <!-- 使用 rosparam 加载 YAML 配置文件到节点私有命名空间 -->
+        <rosparam command="load" file="$(find pcl_detection)/config/sample_config.yaml" />
     </node>
 
     <!-- RViz 可视化节点 -->

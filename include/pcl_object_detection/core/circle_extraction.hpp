@@ -2,6 +2,8 @@
 
 #include "object_base.hpp"
 #include "config.hpp"
+#include "extractors_base.hpp"
+#include "timer.hpp"
 
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
@@ -104,7 +106,9 @@ template <typename PointT>
 std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cloud,
                                         typename pcl::PointCloud<pcl::Normal>::Ptr normals,
                                         const CircleConfig &config,
-                                        const std::set<int>& excluded_indices = {}) {
+                                        const std::set<int>& excluded_indices = {},
+                                        typename pcl::PointCloud<PointT>::Ptr temp_cloud1 = nullptr,
+                                        typename pcl::PointCloud<PointT>::Ptr temp_cloud2 = nullptr) {
     std::vector<Object::Ptr> circles;
     if (cloud->empty()) return circles;
 
@@ -133,6 +137,8 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
     int circle_num = 1;
 
     while (current_indices->indices.size() >= static_cast<size_t>(config.min_inliers) && circle_num <= config.max_circles) {
+        Timer timer;  // 开始计时当前圆环的提取
+
         typename pcl::PointIndices::Ptr plane_inliers(new pcl::PointIndices);
         typename pcl::ModelCoefficients::Ptr plane_coeffs(new pcl::ModelCoefficients);
 
@@ -207,7 +213,15 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         Eigen::Vector4f centroid;
         pcl::compute3DCentroid(*plane_cloud, centroid);
 
-        typename pcl::PointCloud<PointT>::Ptr transformed_cloud(new pcl::PointCloud<PointT>);
+        // 复用临时缓冲区（如果提供）
+        typename pcl::PointCloud<PointT>::Ptr transformed_cloud;
+        if (temp_cloud1) {
+            transformed_cloud = temp_cloud1;
+            transformed_cloud->clear();
+        } else {
+            transformed_cloud.reset(new pcl::PointCloud<PointT>);
+        }
+        
         Eigen::Matrix4f transform = Eigen::Matrix4f::Identity();
         transform.block<3, 3>(0, 0) = rotation.transpose();
         transform.block<3, 1>(0, 3) = -rotation.transpose() * centroid.head<3>();
@@ -265,6 +279,19 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
             continue;
         }
 
+        // 二次检查：确保内点数量足够（防止 RANSAC 误判）
+        if (circle_inliers->indices.size() < static_cast<size_t>(config.min_inliers * 1.5f)) {
+            // 内点数量刚过阈值，质量可能不好，跳过
+            std::set<int> circle_set(circle_inliers->indices.begin(), circle_inliers->indices.end());
+            typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
+            for (int idx : current_indices->indices)
+                if (circle_set.find(idx) == circle_set.end())
+                    new_indices->indices.push_back(idx);
+            current_indices = new_indices;
+            circle_num++;
+            continue;
+        }
+
         typename pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
         coefficients->values.resize(7);
         coefficients->values[0] = center_world[0];
@@ -275,13 +302,10 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
         coefficients->values[5] = plane_normal[2];
         coefficients->values[6] = radius;
 
-        auto start_time = std::chrono::high_resolution_clock::now();
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<double, std::milli>(end_time - start_time).count();
-
+        // 创建圆环对象（记录提取时间）
         float width = 2 * radius;
         auto circle = Object::createCircle("circle_" + std::to_string(circle_num), circle_inliers,
-                                           coefficients, elapsed, width, width, 0.01f);
+                                           coefficients, timer.elapsed(), width, width, 0.01f);
         circles.push_back(circle);
 
         std::set<int> circle_set(circle_inliers->indices.begin(), circle_inliers->indices.end());
@@ -295,6 +319,29 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
 
     return circles;
 }
+
+// ============================================================================
+// 圆环提取器（封装 extractCircles 函数）
+// ============================================================================
+template <typename PointT>
+class CircleExtractor : public IObjectExtractor<PointT> {
+    CircleConfig config_;
+public:
+    using PointCloudPtrT = typename pcl::PointCloud<PointT>::Ptr;
+    using NormalCloudPtrT = typename pcl::PointCloud<pcl::Normal>::Ptr;
+    
+    explicit CircleExtractor(const CircleConfig& config) : config_(config) {}
+    
+    std::vector<Object::Ptr> extract(
+        PointCloudPtrT cloud,
+        NormalCloudPtrT normals,
+        const std::set<int>& excluded,
+        PointCloudPtrT temp_cloud1 = nullptr,
+        PointCloudPtrT temp_cloud2 = nullptr) override 
+    {
+        return extractCircles<PointT>(cloud, normals, config_, excluded, temp_cloud1, temp_cloud2);
+    }
+};
 
 }  // namespace core
 }  // namespace pcl_object_detection

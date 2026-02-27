@@ -24,8 +24,8 @@ bool load_config(const std::string &config_file, core::ObjectDetectionConfig &co
 
         // 下采样配置
         if (node["downsample_config"]) {
-            config.downsample_config.downsample_method =
-                node["downsample_config"]["downsample_method"].as<std::string>("standard");
+            config.downsample_config.approx =
+                node["downsample_config"]["approx"].as<bool>(false);
             config.downsample_config.leaf_size =
                 node["downsample_config"]["leaf_size"].as<float>(0.05f);
         }
@@ -107,8 +107,7 @@ bool load_config(const std::string &config_file, core::ObjectDetectionConfig &co
                 node["circle_extraction"]["min_coverage_angle"].as<float>(270.0f);
             config.circle_config.ransac_iterations =
                 node["circle_extraction"]["ransac_iterations"].as<int>(500);
-            config.circle_config.max_circles =
-                node["circle_extraction"]["max_circles"].as<int>(10);
+            config.circle_config.max_circles = node["circle_extraction"]["max_circles"].as<int>(10);
             config.circle_config.normal_tolerance =
                 node["circle_extraction"]["normal_tolerance"].as<float>(0.5f);
         }
