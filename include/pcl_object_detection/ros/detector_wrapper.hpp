@@ -110,10 +110,12 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
             oss << "  提取时间：" << obj->extraction_time << " ms\n";
 
             // 输出位置（质心）
+            // 注意：必须使用 pipeline_.filtered_cloud 而不是 cloud_，因为 inliers 索引是相对于 filtered_cloud 的
             if (obj->inliers && !obj->inliers->indices.empty()) {
                 Eigen::Vector4f centroid;
-                pcl::compute3DCentroid(*cloud_, *obj->inliers, centroid);
-                oss << "  位置：(" << centroid[0] << ", " << centroid[1] << ", " << centroid[2] << ")\n";
+                pcl::compute3DCentroid(*pipeline_.filtered_cloud, *obj->inliers, centroid);
+                oss << "  位置 (centroid 完整值): [" << centroid[0] << ", " << centroid[1] << ", " << centroid[2] << ", " << centroid[3] << "]\n";
+                oss << "  有效点数：" << pcl::compute3DCentroid(*pipeline_.filtered_cloud, *obj->inliers, centroid) << "\n";
             }
 
             // 输出法向量/轴向（墙面是法向量，圆柱/圆环是轴向）
@@ -270,8 +272,9 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
                     obj_msg.plane_coeffs[i] = obj->coefficients->values[i];
                 }
 
+                // 注意：必须使用 pipeline_.filtered_cloud，因为 inliers 索引是相对于 filtered_cloud 的
                 Eigen::Vector4f centroid;
-                pcl::compute3DCentroid(*cloud_, *obj->inliers, centroid);
+                pcl::compute3DCentroid(*pipeline_.filtered_cloud, *obj->inliers, centroid);
                 obj_msg.position.x = centroid[0];
                 obj_msg.position.y = centroid[1];
                 obj_msg.position.z = centroid[2];
