@@ -35,7 +35,6 @@ generate_messages(
 # 包配置
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ${PROJECT_NAME}
   CATKIN_DEPENDS roscpp pcl_conversions pcl_ros message_runtime geometry_msgs
   DEPENDS PCL Eigen3 yaml-cpp
 )
@@ -101,7 +100,6 @@ add_executable(${PROJECT_NAME}_detector_node
 
 target_link_libraries(${PROJECT_NAME}_detector_node
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
 )
 
@@ -117,7 +115,6 @@ add_executable(${PROJECT_NAME}_visualizer_node
 
 target_link_libraries(${PROJECT_NAME}_visualizer_node
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
 )
 
 add_dependencies(${PROJECT_NAME}_visualizer_node
@@ -133,7 +130,6 @@ add_executable(${PROJECT_NAME}_samples_node
 
 target_link_libraries(${PROJECT_NAME}_samples_node
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
 )
 
@@ -144,7 +140,6 @@ add_executable(${PROJECT_NAME}_obstacle_listener
 
 target_link_libraries(${PROJECT_NAME}_obstacle_listener
   ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
 )
 
 add_dependencies(${PROJECT_NAME}_obstacle_listener
