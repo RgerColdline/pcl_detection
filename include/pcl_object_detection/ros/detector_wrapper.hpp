@@ -40,6 +40,24 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
 
     // 检测步骤：输入点云，输出检测结果
     bool process(const PointCloudPtrT &cloud, pcl_detection::ObjectDetectionResult &result) {
+        // 检查全局处理开关（可被其他节点通过 rosparam set 动态修改）
+        bool enable_processing = true;
+        nh_.getParam("enable_pcl_processing", enable_processing);
+        
+        if (!enable_processing) {
+            // 跳过处理，返回空结果
+            result.success        = false;
+            result.status_message = "PCL processing is disabled (enable_pcl_processing=false)";
+            result.header.stamp   = ::ros::Time::now();
+            result.header.frame_id = "base_link";
+            result.objects.clear();
+            result.wall_count     = 0;
+            result.cylinder_count = 0;
+            result.circle_count   = 0;
+            result.total_time     = 0.0;
+            return false;
+        }
+
         core::Timer timer;  // 开始计时处理时间
         frame_count_++;  // 帧计数递增
 
@@ -158,6 +176,13 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
   private:
     // 从 ROS 参数服务器加载配置（使用私有节点句柄读取）
     void loadConfigFromROS() {
+        // 全局处理开关（从私有参数读取，然后设置到全局参数服务器）
+        bool enable_pcl_processing = true;
+        pnh_.param("enable_pcl_processing", enable_pcl_processing, true);
+        nh_.setParam("enable_pcl_processing", enable_pcl_processing);
+        ROS_INFO("全局处理开关 enable_pcl_processing = %s (初始值来自配置文件)", enable_pcl_processing ? "true" : "false");
+        ROS_INFO("其他节点可通过 'rosparam set enable_pcl_processing false/true' 动态控制处理开关");
+
         // 日志频率配置
         pnh_.param("log_skip_frames", log_skip_frames_, 19);
         pnh_.param("log_interval_sec", log_interval_sec_, 2.0);
