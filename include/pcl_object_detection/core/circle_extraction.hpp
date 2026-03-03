@@ -1,6 +1,7 @@
 #pragma once
 
 #include "object_base.hpp"
+#include "object_factory.hpp"
 #include "config.hpp"
 #include "extractors_base.hpp"
 #include "timer.hpp"
@@ -304,7 +305,7 @@ std::vector<Object::Ptr> extractCircles(typename pcl::PointCloud<PointT>::Ptr cl
 
         // 创建圆环对象（记录提取时间）
         float width = 2 * radius;
-        auto circle = Object::createCircle("circle_" + std::to_string(circle_num), circle_inliers,
+        auto circle = ObjectFactory::createCircle("circle_" + std::to_string(circle_num), circle_inliers,
                                            coefficients, timer.elapsed(), width, width, 0.01f);
         circles.push_back(circle);
 

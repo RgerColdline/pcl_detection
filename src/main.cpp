@@ -4,6 +4,7 @@
 #include <ros/ros.h>
 
 #include <pcl_object_detection/pipeline.hpp>
+#include <pcl_object_detection/core/logger_limiter.hpp>
 
 #include <iostream>
 

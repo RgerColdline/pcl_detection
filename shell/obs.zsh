@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/bin/zsh
 # obs.zsh - PCL 对象检测节点启动脚本 (zsh 版本)
 # 用法：source src/pcl_detection/shell/obs.zsh  或  ./obs.zsh
 

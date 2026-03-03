@@ -22,7 +22,7 @@ log_skip_frames: 19
 # 方式 2：基于时间 - 每 N 秒输出一次（0=禁用，2.0=每 2 秒输出一次）
 log_interval_sec: 2.0
 # Livox 日志级别：0=无，1=摘要，2=详细
-livox_debug_level: 2
+livox_debug_level: 1  # 降低为 1，减少详细日志
 
 # ============================================================================
 # 时间测量配置
@@ -38,9 +38,12 @@ timing:
 # ============================================================================
 # 下采样配置
 # ============================================================================
+# 下采样会显著减少点云数量，提升处理速度但降低精度
+# leaf_size 越大，下采样越激进，点云越少，速度越快
+# 建议值：0.05-0.08（平衡），0.08-0.12（快速），>0.12（极速但可能检测不到物体）
 downsample_config:
   approx: true  # true=ApproximateVoxelGrid(更快精度略低), false=VoxelGrid(标准)
-  leaf_size: 0.05  #升高提速，降低提升精度
+  leaf_size: 0.08  # 下采样网格大小（米）
 
 # ============================================================================
 # 墙体检测配置
@@ -59,8 +62,8 @@ wall_extraction:
 cylinder_extraction:
   enable: true  #是否启用检测圆柱
   using_normal: false  #是否使用法线信息（建议使用，可提高检测精度）
-  distance_threshold: 0.06  #距离阈值，点到圆柱模型的最大允许距离
-  min_inliers: 300  #点数阈值，圆柱内点数量必须大于此值
+  distance_threshold: 0.02  #距离阈值，点到圆柱模型的最大允许距离
+  min_inliers: 100  #点数阈值，圆柱内点数量必须大于此值
   radius_min: 0.1  #最小半径（米），小于此半径的圆柱不会被检测
   radius_max: 1  #最大半径（米），大于此半径的圆柱不会被检测
   axis: [0, 0, 1]  #圆柱轴向参考向量，用于约束圆柱方向
@@ -70,7 +73,7 @@ cylinder_extraction:
 # 圆环检测配置
 # ============================================================================
 circle_extraction:
-  enable: true  #是否启用检测圆环
+  enable: false  #是否启用检测圆环
   using_normal: false  #是否使用法线信息（建议使用，可提高检测精度）
   distance_threshold: 0.03  #距离阈值，点到圆环模型的最大允许距离
   min_inliers: 80  #点数阈值，圆环内点数量必须大于此值
@@ -81,8 +84,29 @@ circle_extraction:
   plane_normal_z_max: 0.7  #平面法向量 Z 分量最大值，用于筛选竖直平面
   min_coverage_angle: 240.0  #最小覆盖角度（度），圆环必须覆盖至少这么多角度
   ransac_iterations: 200  #RANSAC 迭代次数，越高越准确但越慢
-  max_circles: 5  #最大检测圆环数量
+  max_circles: 3  #最大检测圆环数量
   normal_tolerance: 0.5  #法向量容差，用于验证圆环法向量方向
+
+# ============================================================================
+# 矩形框检测配置
+# ============================================================================
+# 注意：矩形框检测计算量较大，建议调大下采样 leaf_size 提升速度
+# 如果误检较多，可以增大 min_inliers、coverage_threshold 或缩小 length/width 范围
+rectangle_extraction:
+  enable: true  #是否启用检测矩形框（方环）[默认关闭，需要时开启]
+  using_normal: false  #是否使用法线信息（建议使用，可提高检测精度）
+  distance_threshold: 0.05  #距离阈值，点到矩形边的最大允许距离（增大提高容错）
+  min_inliers: 300  #点数阈值，矩形内点数量必须大于此值（增大减少误检）
+  length_min: 0.8  #最小长度（米），小于此长度的矩形不会被检测（增大过滤小物体）
+  length_max: 2.5  #最大长度（米），大于此长度的矩形不会被检测
+  width_min: 0.5  #最小宽度（米），小于此宽度的矩形不会被检测（增大过滤窄物体）
+  width_max: 1.5  #最大宽度（米），大于此宽度的矩形不会被检测
+  plane_distance_threshold: 0.08  #平面提取距离阈值，用于提取矩形所在平面（增大提高容错）
+  plane_angle_threshold: 30.0  #平面角度阈值（度），平面法线与垂直方向的最大夹角（减小更严格）
+  plane_normal_z_max: 0.5  #平面法向量 Z 分量最大值，用于筛选竖直平面（减小更严格）
+  coverage_threshold: 0.5  #最小边覆盖比例，矩形边上的点必须占总点的这个比例（增大减少误检）
+  ransac_iterations: 200  #RANSAC 迭代次数，越高越准确但越慢（减小提升速度）
+  max_rectangles: 3  #最大检测矩形数量（减小提升速度）
 
 # ============================================================================
 # 其他配置
@@ -91,8 +115,90 @@ save_objects: false #是否保存检测到的对象点云
 output_dir: "/home/jetson/detected_objects"
 
 # ============================================================================
+# 点云发布配置（RViz 可视化）
+# ============================================================================
+# 设置为 true 时，发布下采样后的点云到 /pcl_detection/pointcloud 话题
+# 在 RViz 中添加 PointCloud2 类型，话题选择 /pcl_detection/pointcloud 即可看到点云
+publish_cloud: true
+
+# 点云数量阈值（低于此阈值的点云不发布，减少 RViz 负担）
+min_cloud_points: 10
+
+# ============================================================================
 # 点云采样配置（points_samples 节点专用）
 # ============================================================================
 points_sample_config:
   enable_livox_callback: true # 是否启用 Livox 点云回调
   save_sample_param: "/livox/save_sample" # 触发保存的 ROS 参数名称
+
+# ============================================================================
+# 障碍物 Pipeline 配置（新 Pipeline：地面分割 + 墙体 + 方环 + 聚类）
+# ============================================================================
+# 使用方式：在 launch 文件中设置 use_obstacle_pipeline: true
+# ============================================================================
+use_obstacle_pipeline: true  # 设置为 true 启用新 Pipeline
+
+# ----------------------------------------------------------------------------
+# 新 Pipeline 下采样配置
+# ----------------------------------------------------------------------------
+obstacle_pipeline:
+  downsample_config:
+    approx: true  # true=ApproximateVoxelGrid(更快), false=VoxelGrid(标准)
+    leaf_size: 0.08  # 下采样网格大小（米）
+
+  # 地面分割配置
+  ground_config:
+    enable: false
+    distance_threshold: 0.05  # RANSAC 距离阈值
+    max_iterations: 100  # RANSAC 最大迭代次数
+    normal_z_min: 0.8  # 地面法向量 Z 分量最小值（约束法向量接近 Z 轴）
+    normal_z_max: 1.0  # 地面法向量 Z 分量最大值
+
+  # 墙体检测配置（新 Pipeline 专用）
+  wall_config:
+    enable: true
+    using_normal: false
+    distance_threshold: 0.04
+    min_inliers: 500      # 点数阈值 [降低到 500，因为下采样后点数减少]
+    angle_threshold: 15.0  # 法线与垂直方向夹角阈值（度）
+    axis: [0, 0, 1]  # 参考向量
+
+  # 方环检测配置（新 Pipeline 专用）
+  rectangle_config:
+    enable: true
+    using_normal: false
+    distance_threshold: 0.05
+    min_inliers: 300
+    length_min: 0.8
+    length_max: 2.5
+    width_min: 0.5
+    width_max: 1.5
+    plane_distance_threshold: 0.08
+    plane_angle_threshold: 30.0
+    plane_normal_z_max: 0.5
+    coverage_threshold: 0.5
+    ransac_iterations: 200
+    max_rectangles: 3
+
+  # 聚类配置
+  cluster_config:
+    enable: true
+    cluster_tolerance: 0.3   # 聚类距离阈值（米）[增大减少聚类数量，0.3=30cm]
+    min_cluster_size: 500    # 最小簇点数 [增大过滤小物体，500 点约 1 立方米]
+    max_cluster_size: 100000 # 最大簇点数
+
+  # OBB 包围盒配置
+  obb_config:
+    inflation_radius: 0.1  # 膨胀半径（米）
+    min_obstacle_height: 0.2  # 最小障碍物高度（米）
+
+  # 时间测量配置
+  timing_config:
+    enable: true
+    downsample: true
+    ground: true
+    wall: true
+    rectangle: true
+    cluster: true
+    obb: true
+    total: true

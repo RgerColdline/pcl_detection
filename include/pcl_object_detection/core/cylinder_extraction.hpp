@@ -2,6 +2,7 @@
 
 #include "config.hpp"
 #include "object_base.hpp"
+#include "object_factory.hpp"
 #include "extractors_base.hpp"
 #include "timer.hpp"
 
@@ -124,7 +125,7 @@ std::vector<Object::Ptr> extractCylinders(typename pcl::PointCloud<PointT>::Ptr 
         float depth = width;
 
         // 创建圆柱对象（记录提取时间）
-        auto cylinder = Object::createCylinder("cylinder_" + std::to_string(cylinder_num),
+        auto cylinder = ObjectFactory::createCylinder("cylinder_" + std::to_string(cylinder_num),
                                                inliers_local, coefficients, timer.elapsed(), width, height,
                                                depth, use_normals);
         cylinders.push_back(cylinder);

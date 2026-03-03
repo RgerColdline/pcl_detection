@@ -72,6 +72,31 @@ struct CircleConfig
     float normal_tolerance       = 0.5f;     // 法向量 Z 分量容差（竖直圆环法向量应接近水平）
 };
 
+// 矩形框配置
+struct RectangleConfig
+{
+    bool enable              = true;
+    bool using_normal        = true;
+    float distance_threshold = 0.03f;
+    int min_inliers          = 100;
+
+    // 尺寸参数
+    float length_min         = 0.5f;   // 最小长度（米）
+    float length_max         = 3.0f;   // 最大长度（米）
+    float width_min          = 0.3f;   // 最小宽度（米）
+    float width_max          = 2.0f;   // 最大宽度（米）
+
+    // 平面提取参数
+    float plane_distance_threshold = 0.05f;  // 平面提取距离阈值
+    float plane_angle_threshold    = 45.0f;  // 平面法向量与 Z 轴的最大夹角（度）
+    float plane_normal_z_max       = 0.7f;   // 平面法向量 Z 分量最大值
+
+    // 矩形验证参数
+    float coverage_threshold     = 0.3f;     // 最小边覆盖比例
+    int ransac_iterations        = 300;      // RANSAC 迭代次数
+    int max_rectangles           = 10;       // 最大检测矩形数量
+};
+
 // 统一的配置结构
 struct ObjectDetectionConfig
 {
@@ -80,6 +105,7 @@ struct ObjectDetectionConfig
     WallConfig wall_config;
     CylinderConfig cylinder_config;
     CircleConfig circle_config;
+    RectangleConfig rectangle_config;
 
     TimingConfig timing_config;
 

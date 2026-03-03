@@ -1,7 +1,7 @@
 # 检测到的物体信息
 std_msgs/Header header
 
-# 物体类型：0=Wall, 1=Cylinder, 2=Circle
+# 物体类型：0=Wall, 1=Cylinder, 2=Circle, 3=Rectangle
 int32 type
 
 # 物体名称

@@ -1,6 +1,6 @@
 # PCL 对象检测包
 
-基于 PCL 和 ROS 的实时物体检测系统，支持墙面、圆柱、圆环检测，适用于无人机避障和导航。
+基于 PCL 和 ROS 的实时物体检测系统，支持墙面、圆柱、圆环、矩形框检测，适用于无人机避障和导航。
 
 ## 目录
 
@@ -45,7 +45,7 @@ rostopic echo /pcl_detection/result
 
 ## 功能特性
 
-- ✅ **实时检测**：墙面、圆柱、圆环
+- ✅ **实时检测**：墙面、圆柱、圆环、矩形框
 - ✅ **高性能**：~70ms 处理时间（Jetson Xavier NX）
 - ✅ **ROS 集成**：标准话题接口
 - ✅ **可配置**：支持 YAML 配置文件
@@ -186,8 +186,8 @@ private:
     void resultCallback(const pcl_detection::ObjectDetectionResult::ConstPtr& msg)
     {
         ROS_INFO("=== 检测结果 ===");
-        ROS_INFO("墙体：%d 个，圆柱：%d 个，圆环：%d 个",
-                 msg->wall_count, msg->cylinder_count, msg->circle_count);
+        ROS_INFO("墙体：%d 个，圆柱：%d 个，圆环：%d 个，矩形框：%d 个",
+                 msg->wall_count, msg->cylinder_count, msg->circle_count, msg->rectangle_count);
         ROS_INFO("总耗时：%.2f ms", msg->total_time);
 
         for (const auto& obj : msg->objects)
@@ -209,9 +209,10 @@ private:
 
         switch (obj->type)
         {
-            case 0: processWall(obj); break;    // 墙体
-            case 1: processCylinder(obj); break; // 圆柱
-            case 2: processCircle(obj); break;   // 圆环
+            case 0: processWall(obj); break;      // 墙体
+            case 1: processCylinder(obj); break;  // 圆柱
+            case 2: processCircle(obj); break;    // 圆环
+            case 3: processRectangle(obj); break; // 矩形框
             default: break;
         }
     }
@@ -277,6 +278,37 @@ void processCircle(const pcl_detection::DetectedObject::ConstPtr& obj)
     ROS_INFO("  圆心：(%.3f, %.3f, %.3f)",
              obj->position.x, obj->position.y, obj->position.z);
     ROS_INFO("  半径：%.3f m", obj->radius);
+}
+
+void processRectangle(const pcl_detection::DetectedObject::ConstPtr& obj)
+{
+    ROS_INFO("[矩形框] %s", obj->name.c_str());
+    ROS_INFO("  中心：(%.3f, %.3f, %.3f)",
+             obj->position.x, obj->position.y, obj->position.z);
+    ROS_INFO("  尺寸：长=%.3f m, 宽=%.3f m", obj->width, obj->height);
+    ROS_INFO("  旋转角：%.1f°", obj->radius);  // radius 字段存储旋转角度
+
+    // 获取平面方程（法向量）
+    if (!obj->plane_coeffs.empty())
+    {
+        double A = obj->plane_coeffs[0];
+        double B = obj->plane_coeffs[1];
+        double C = obj->plane_coeffs[2];
+        double norm = std::sqrt(A*A + B*B + C*C);
+        ROS_INFO("  法向量：(%.3f, %.3f, %.3f)", A/norm, B/norm, C/norm);
+    }
+
+    // 判断是否可以通过（示例：无人机宽度 0.6m，高度 0.6m）
+    double drone_width = 0.6;
+    double drone_height = 0.6;
+    if (obj->width > drone_width && obj->height > drone_height)
+    {
+        ROS_INFO("  ✓ 可通过（净空足够）");
+    }
+    else
+    {
+        ROS_WARN("  ✗ 无法通过（净空不足）");
+    }
 }
 ```
 
@@ -408,6 +440,23 @@ circle_extraction:
   min_coverage_angle: 240.0  # 最小覆盖角度（度）
   ransac_iterations: 200
   max_circles: 5
+
+# 矩形框检测
+rectangle_extraction:
+  enable: true
+  using_normal: true
+  distance_threshold: 0.03   # 距离阈值（米）
+  min_inliers: 100           # 最小内点数
+  length_min: 0.5            # 最小长度（米）
+  length_max: 3.0            # 最大长度（米）
+  width_min: 0.3             # 最小宽度（米）
+  width_max: 2.0             # 最大宽度（米）
+  plane_distance_threshold: 0.05  # 平面提取距离阈值
+  plane_angle_threshold: 45.0     # 平面角度阈值（度）
+  plane_normal_z_max: 0.7         # 平面法向量 Z 分量最大值
+  coverage_threshold: 0.3         # 最小边覆盖比例
+  ransac_iterations: 300     # RANSAC 迭代次数
+  max_rectangles: 10         # 最大检测数量
 ```
 
 ### 日志控制（launch 文件）

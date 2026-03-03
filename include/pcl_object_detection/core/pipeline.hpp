@@ -4,7 +4,10 @@
 #include "config.hpp"
 #include "cylinder_extraction.hpp"
 #include "extractors_base.hpp"
+#include "extractor_factory.hpp"
 #include "object_base.hpp"
+#include "object_factory.hpp"
+#include "rectangle_extraction.hpp"
 #include "timer.hpp"
 #include "wall_extraction.hpp"
 
@@ -30,7 +33,7 @@ namespace pcl_object_detection
 namespace core
 {
 
-// 过滤特定的 PCL RANSAC 警告
+// 过滤特定的 PCL RANSAC 警告（仅过滤"未检测到模型"的警告）
 class PclWarningFilter {
 public:
     PclWarningFilter() {
@@ -44,34 +47,34 @@ public:
             pipefd_[1] = -1;  // 标记已关闭
         }
     }
-    
+
     // 读取管道内容，过滤后输出到原始 stderr，并恢复 stderr
     void restoreAndFlush() {
         if (pipefd_[0] < 0 || original_fd_ < 0) return;
-        
+
         // 恢复原始 stderr
         dup2(original_fd_, STDERR_FILENO);
         close(original_fd_);
         original_fd_ = -1;
-        
+
         // 读取管道内容并过滤
         char buffer[4096];
         ssize_t n;
         while ((n = read(pipefd_[0], buffer, sizeof(buffer) - 1)) > 0) {
             buffer[n] = '\0';
             std::string line(buffer);
-            
-            // 过滤 RANSAC 警告
-            if (line.find("[pcl::RandomSampleConsensus::computeModel] RANSAC found no model") == std::string::npos &&
-                line.find("[pcl::SACSegmentationFromNormals::segment] Error segmenting the model") == std::string::npos) {
-                // 不是 RANSAC 警告，输出到原始 stderr
+
+            // 只过滤"RANSAC 未检测到模型"的警告（这是正常情况）
+            // 其他 PCL 错误（如法向量不匹配、初始化失败等）都输出，帮助调试
+            if (line.find("[pcl::RandomSampleConsensus::computeModel] RANSAC found no model") == std::string::npos) {
+                // 不是"未检测到模型"的警告，输出到原始 stderr（包括所有错误）
                 ::write(STDERR_FILENO, buffer, n);
             }
         }
         close(pipefd_[0]);
         pipefd_[0] = -1;
     }
-    
+
     ~PclWarningFilter() {
         if (original_fd_ >= 0) {
             dup2(original_fd_, STDERR_FILENO);
@@ -108,9 +111,10 @@ template <typename PointT> struct ObjectDetectionPipeline
     double total_time_      = 0.0;
 
     // 各类对象提取时间
-    double wall_time     = 0.0;
-    double cylinder_time = 0.0;
-    double circle_time   = 0.0;
+    double wall_time      = 0.0;
+    double cylinder_time  = 0.0;
+    double circle_time    = 0.0;
+    double rectangle_time = 0.0;
 
     // 临时点云缓冲区（复用内存，减少分配）
     typename pcl::PointCloud<PointT>::Ptr temp_cloud1_;
@@ -167,51 +171,97 @@ template <typename PointT> struct ObjectDetectionPipeline
                                  config.downsample_config.leaf_size);
         downsample_time_  = downsample_timer.elapsed();
 
+        // 计算下采样比例，用于调整 min_inliers
+        float downsample_ratio = 1.0f;
+        if (input_cloud && filtered_cloud && input_cloud->size() > 0) {
+            downsample_ratio = static_cast<float>(filtered_cloud->size()) / 
+                               static_cast<float>(input_cloud->size());
+            ROS_DEBUG("下采样比例：%.2f (%d -> %d 点)", 
+                      downsample_ratio, 
+                      static_cast<int>(input_cloud->size()), 
+                      static_cast<int>(filtered_cloud->size()));
+        }
+
+        // 根据下采样比例调整 min_inliers 参数
+        auto adjustMinInliers = [downsample_ratio](int original_min_inliers) -> int {
+            // 按比例调整，但至少保持原始值的 50%
+            int adjusted = static_cast<int>(original_min_inliers * downsample_ratio);
+            return std::max(adjusted, static_cast<int>(original_min_inliers * 0.5f));
+        };
+
+        // 创建临时配置副本，调整 min_inliers
+        ObjectDetectionConfig adjusted_config = config;
+        adjusted_config.wall_config.min_inliers = adjustMinInliers(config.wall_config.min_inliers);
+        adjusted_config.cylinder_config.min_inliers = adjustMinInliers(config.cylinder_config.min_inliers);
+        adjusted_config.circle_config.min_inliers = adjustMinInliers(config.circle_config.min_inliers);
+        adjusted_config.rectangle_config.min_inliers = adjustMinInliers(config.rectangle_config.min_inliers);
+
+        ROS_DEBUG("min_inliers 调整：wall=%d, cylinder=%d, circle=%d, rectangle=%d",
+                  adjusted_config.wall_config.min_inliers,
+                  adjusted_config.cylinder_config.min_inliers,
+                  adjusted_config.circle_config.min_inliers,
+                  adjusted_config.rectangle_config.min_inliers);
+
         // 2. 估计法向量（如果需要）
         bool need_normals = config.wall_config.using_normal ||
                             config.cylinder_config.using_normal ||
-                            config.circle_config.using_normal;
+                            config.circle_config.using_normal ||
+                            config.rectangle_config.using_normal;
         if (need_normals) {
             normals = estimateNormals(filtered_cloud);
         }
 
-        // 3. 提取所有对象（使用提取器多态）
+        // 3. 提取所有对象（使用提取器工厂）
         objects.clear();
         std::set<int> used_indices;  // 已使用的点索引
 
-        // 创建提取器队列
+        // 注册内置提取器
+        ExtractorFactory::registerBuiltins<PointT>();
+
+        // 创建提取器队列（使用调整后的配置）
         std::vector<std::unique_ptr<IObjectExtractor<PointT>>> extractors;
-        
-        if (config.wall_config.enable) {
-            extractors.push_back(std::make_unique<WallExtractor<PointT>>(config.wall_config));
+
+        if (adjusted_config.wall_config.enable) {
+            auto extractor = ExtractorFactory::create<PointT>(
+                "wall", ExtractorFactory::ConfigVariant::fromWall(adjusted_config.wall_config));
+            if (extractor) extractors.push_back(std::move(extractor));
         }
-        if (config.cylinder_config.enable) {
-            extractors.push_back(std::make_unique<CylinderExtractor<PointT>>(config.cylinder_config));
+        if (adjusted_config.cylinder_config.enable) {
+            auto extractor = ExtractorFactory::create<PointT>(
+                "cylinder", ExtractorFactory::ConfigVariant::fromCylinder(adjusted_config.cylinder_config));
+            if (extractor) extractors.push_back(std::move(extractor));
         }
-        if (config.circle_config.enable) {
-            extractors.push_back(std::make_unique<CircleExtractor<PointT>>(config.circle_config));
+        if (adjusted_config.circle_config.enable) {
+            auto extractor = ExtractorFactory::create<PointT>(
+                "circle", ExtractorFactory::ConfigVariant::fromCircle(adjusted_config.circle_config));
+            if (extractor) extractors.push_back(std::move(extractor));
+        }
+        if (adjusted_config.rectangle_config.enable) {
+            auto extractor = ExtractorFactory::create<PointT>(
+                "rectangle", ExtractorFactory::ConfigVariant::fromRectangle(adjusted_config.rectangle_config));
+            if (extractor) extractors.push_back(std::move(extractor));
         }
 
         // 统一执行提取（过滤 PCL RANSAC 警告，保留其他错误）
-        for (auto& extractor : extractors) {
+        std::vector<std::string> extractor_names = {"wall", "cylinder", "circle", "rectangle"};
+        std::vector<double*> extractor_times = {&wall_time, &cylinder_time, &circle_time, &rectangle_time};
+        
+        for (size_t i = 0; i < extractors.size(); ++i) {
+            auto& extractor = extractors[i];
             Timer timer;
-            
+
             // 创建过滤器，临时捕获 stderr
             PclWarningFilter filter;
-            
+
             auto objs = extractor->extract(filtered_cloud, normals, used_indices, temp_cloud1_, temp_cloud2_);
             double elapsed = timer.elapsed();
-            
+
             // 恢复 stderr 并过滤输出
             filter.restoreAndFlush();
 
-            // 记录时间（根据类型存储到对应变量）
-            if (dynamic_cast<WallExtractor<PointT>*>(extractor.get())) {
-                wall_time = elapsed;
-            } else if (dynamic_cast<CylinderExtractor<PointT>*>(extractor.get())) {
-                cylinder_time = elapsed;
-            } else if (dynamic_cast<CircleExtractor<PointT>*>(extractor.get())) {
-                circle_time = elapsed;
+            // 记录时间
+            if (i < extractor_times.size()) {
+                *extractor_times[i] = elapsed;
             }
 
             // 添加到对象列表
@@ -234,24 +284,13 @@ template <typename PointT> struct ObjectDetectionPipeline
         return true;
     }
 
-    // 输出时间日志（受频率控制）
-    void printTimingInfo(int frame_count, double log_interval_sec, int log_skip_frames) {
+    // 输出时间日志（每 N 帧输出一次）
+    void printTimingInfo() {
         if (!config.timing_config.enable) return;
-        
-        // 检查是否应该输出日志
-        static ::ros::Time last_log_time(0);
-        ::ros::Time now = ::ros::Time::now();
-        
-        bool should_log = false;
-        if (log_interval_sec > 0 && (now - last_log_time).toSec() >= log_interval_sec) {
-            should_log = true;
-        } else if (log_skip_frames >= 0 && (frame_count % (log_skip_frames + 1)) == 0) {
-            should_log = true;
-        }
-        
-        if (!should_log) return;
-        last_log_time = now;
-        
+
+        // 每 N 帧输出一次
+        if (!LOG_SHOULD()) return;
+
         ROS_INFO("=== 处理时间统计 ===");
         if (config.timing_config.downsample) {
             ROS_INFO("  下采样：%.2f ms", downsample_time_);
@@ -264,6 +303,9 @@ template <typename PointT> struct ObjectDetectionPipeline
         }
         if (config.timing_config.circles && config.circle_config.enable) {
             ROS_INFO("  圆环提取：%.2f ms", circle_time);
+        }
+        if (config.timing_config.enable && config.rectangle_config.enable) {
+            ROS_INFO("  方框提取：%.2f ms", rectangle_time);
         }
         if (config.timing_config.total) {
             ROS_INFO("  总耗时：%.2f ms", total_time_);

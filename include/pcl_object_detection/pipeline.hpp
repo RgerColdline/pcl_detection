@@ -30,22 +30,27 @@ template <typename PointT> class ApplicationPipeline
         std::cout << "\n=== 加载的配置 ===\n";
         std::cout << "Wall extraction:\n";
         std::cout << "  enable: " << (config_.wall_config.enable ? "true" : "false") << "\n";
-        std::cout << "  using_normal: " << (config_.wall_config.using_normal ? "true" : "false") << "\n";
+        std::cout << "  using_normal: " << (config_.wall_config.using_normal ? "true" : "false")
+                  << "\n";
         std::cout << "  distance_threshold: " << config_.wall_config.distance_threshold << "\n";
         std::cout << "  min_inliers: " << config_.wall_config.min_inliers << "\n";
         std::cout << "  angle_threshold: " << config_.wall_config.angle_threshold << "\n";
         std::cout << "Cylinder extraction:\n";
         std::cout << "  enable: " << (config_.cylinder_config.enable ? "true" : "false") << "\n";
-        std::cout << "  using_normal: " << (config_.cylinder_config.using_normal ? "true" : "false") << "\n";
+        std::cout << "  using_normal: " << (config_.cylinder_config.using_normal ? "true" : "false")
+                  << "\n";
         std::cout << "  distance_threshold: " << config_.cylinder_config.distance_threshold << "\n";
         std::cout << "  min_inliers: " << config_.cylinder_config.min_inliers << "\n";
-        std::cout << "  radius_min: " << config_.cylinder_config.radius_min << ", radius_max: " << config_.cylinder_config.radius_max << "\n";
+        std::cout << "  radius_min: " << config_.cylinder_config.radius_min
+                  << ", radius_max: " << config_.cylinder_config.radius_max << "\n";
         std::cout << "Circle extraction:\n";
         std::cout << "  enable: " << (config_.circle_config.enable ? "true" : "false") << "\n";
-        std::cout << "  using_normal: " << (config_.circle_config.using_normal ? "true" : "false") << "\n";
+        std::cout << "  using_normal: " << (config_.circle_config.using_normal ? "true" : "false")
+                  << "\n";
         std::cout << "  distance_threshold: " << config_.circle_config.distance_threshold << "\n";
         std::cout << "  min_inliers: " << config_.circle_config.min_inliers << "\n";
-        std::cout << "  radius_min: " << config_.circle_config.radius_min << ", radius_max: " << config_.circle_config.radius_max << "\n";
+        std::cout << "  radius_min: " << config_.circle_config.radius_min
+                  << ", radius_max: " << config_.circle_config.radius_max << "\n";
         std::cout << "===================\n\n";
 
         // 2. 加载点云
