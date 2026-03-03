@@ -168,10 +168,10 @@ obstacle_pipeline:
     enable: true
     using_normal: false
     distance_threshold: 0.05
-    min_inliers: 300
-    length_min: 0.8
+    min_inliers: 100
+    length_min: 0.5
     length_max: 2.5
-    width_min: 0.5
+    width_min: 0.4
     width_max: 1.5
     plane_distance_threshold: 0.08
     plane_angle_threshold: 30.0
@@ -184,8 +184,8 @@ obstacle_pipeline:
   cluster_config:
     enable: true
     cluster_tolerance: 0.3   # 聚类距离阈值（米）[增大减少聚类数量，0.3=30cm]
-    min_cluster_size: 500    # 最小簇点数 [增大过滤小物体，500 点约 1 立方米]
-    max_cluster_size: 100000 # 最大簇点数
+    min_cluster_size: 50    # 最小簇点数 [增大过滤小物体，500 点约 1 立方米]
+    max_cluster_size: 1000 # 最大簇点数
 
   # OBB 包围盒配置
   obb_config:

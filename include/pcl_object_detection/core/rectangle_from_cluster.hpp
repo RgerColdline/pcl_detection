@@ -263,10 +263,10 @@ class RectangleFromClusterExtractor
 {
 public:
     using PointCloudPtrT = typename pcl::PointCloud<PointT>::Ptr;
-    
-    explicit RectangleFromClusterExtractor(const RectangleExtractionConfig& config) 
+
+    explicit RectangleFromClusterExtractor(const RectangleExtractionConfig& config)
         : config_(config) {}
-    
+
     /**
      * @brief 从聚类中提取方环
      * @param clusters 输入聚类
@@ -280,37 +280,56 @@ public:
         std::set<int>& used_indices)
     {
         std::vector<Object::Ptr> rectangles;
-        
+
         if (!config_.enable || clusters.empty()) {
+            ROS_INFO("[RectFromCluster] 方环检测被跳过：enable=%d, clusters=%lu",
+                     config_.enable ? 1 : 0, clusters.size());
             return rectangles;
         }
-        
+
         Timer timer;
         int rect_num = 0;
         int total_clusters = clusters.size();
         int valid_clusters = 0;
+        int boundary_fail = 0;      // 边界点提取失败
+        int corner_fail = 0;        // 角点检测失败
+        int fit_fail = 0;           // 矩形拟合失败
+        int validate_fail = 0;      // 矩形验证失败
         
+        // 存储所有聚类的尺寸分布（用于统计）
+        std::vector<std::pair<float, float>> rectangle_sizes_;
+
+        ROS_INFO("[RectFromCluster] 开始处理 %d 个聚类", total_clusters);
+
         for (const auto& cluster : clusters) {
-            if (rect_num >= config_.max_rectangles) break;
-            
+            if (rect_num >= config_.max_rectangles) {
+                ROS_DEBUG("[RectFromCluster] 已达到最大方环数量 %d", config_.max_rectangles);
+                break;
+            }
+
             // 检查聚类大小
             if (cluster->indices.size() < static_cast<size_t>(config_.min_cluster_size)) {
+                ROS_DEBUG("[RectFromCluster] 聚类 #%d 点数=%lu < min_cluster_size=%d, 跳过",
+                          valid_clusters, static_cast<unsigned long>(cluster->indices.size()), config_.min_cluster_size);
                 continue;
             }
             valid_clusters++;
-            
+
+            ROS_DEBUG("[RectFromCluster] 处理聚类 #%d/%d (点数=%lu)",
+                      valid_clusters, total_clusters, cluster->indices.size());
+
             // 提取聚类点云
             PointCloudPtrT cluster_cloud(new pcl::PointCloud<PointT>);
             pcl::ExtractIndices<PointT> extract;
             extract.setInputCloud(cloud);
             extract.setIndices(cluster);
             extract.filter(*cluster_cloud);
-            
+
             // ========== 步骤 1: PCA 分析，确定投影平面 ==========
             // 使用边界框中心代替算术平均质心（避免点云分布不均导致的偏移）
             Eigen::Vector4f centroid4 = core::computeBBoxCentroid(*cluster_cloud, *cluster);
             Eigen::Vector3f centroid = centroid4.head<3>();
-            
+
             // 计算协方差矩阵
             Eigen::Matrix3f cov = Eigen::Matrix3f::Zero();
             for (const auto& pt : cluster_cloud->points) {
@@ -319,40 +338,47 @@ public:
                 cov += diff * diff.transpose();
             }
             cov /= cluster_cloud->size();
-            
+
             // 特征值分解
             Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> solver(cov);
             Eigen::Vector3f eigenvalues = solver.eigenvalues();
             Eigen::Matrix3f eigenvectors = solver.eigenvectors();
-            
+
             // 确保右手坐标系
             if (eigenvectors.determinant() < 0) {
                 eigenvectors.col(2) = -eigenvectors.col(2);
             }
-            
+
+            // 打印特征值，帮助分析点云分布
+            ROS_DEBUG("[RectFromCluster] PCA 特征值：[%.4f, %.4f, %.4f]",
+                      eigenvalues[0], eigenvalues[1], eigenvalues[2]);
+
             // 投影矩阵（将点云投影到最大两个特征向量张成的平面）
             Eigen::Matrix3f R = eigenvectors.transpose();
-            
+
             // ========== 步骤 2: 投影到 2D 平面 ==========
             std::vector<Eigen::Vector2f> points_2d;
             points_2d.reserve(cluster_cloud->size());
-            
+
             for (const auto& pt : cluster_cloud->points) {
                 Eigen::Vector3f p(pt.x, pt.y, pt.z);
                 Eigen::Vector3f centered = p - centroid;
                 Eigen::Vector3f rotated = R * centered;
                 points_2d.emplace_back(rotated[0], rotated[1]);
             }
-            
+
             // ========== 步骤 3: 提取边界点 ==========
-            std::vector<int> boundary_indices = 
+            std::vector<int> boundary_indices =
                 extractBoundaryPoints<PointT>(cluster_cloud, 0.5f * M_PI);
-            
+
+            ROS_DEBUG("[RectFromCluster] 边界点数量=%lu", boundary_indices.size());
+
             if (boundary_indices.size() < 8) {
-                ROS_DEBUG("[RectFromCluster] 边界点太少：%lu", boundary_indices.size());
+                ROS_DEBUG("[RectFromCluster] 边界点太少：%lu < 8, 跳过", boundary_indices.size());
+                boundary_fail++;
                 continue;
             }
-            
+
             // 获取边界点的 2D 坐标
             std::vector<Eigen::Vector2f> boundary_2d;
             boundary_2d.reserve(boundary_indices.size());
@@ -361,57 +387,83 @@ public:
                     boundary_2d.push_back(points_2d[idx]);
                 }
             }
-            
+
             // 计算边界点中心
             Eigen::Vector2f boundary_center(0, 0);
             for (const auto& pt : boundary_2d) {
                 boundary_center += pt;
             }
             boundary_center /= boundary_2d.size();
-            
+
             // 排序边界点
-            std::vector<Eigen::Vector2f> sorted_boundary = 
+            std::vector<Eigen::Vector2f> sorted_boundary =
                 sortBoundaryPoints(boundary_2d, boundary_center);
-            
+
+            ROS_DEBUG("[RectFromCluster] 排序后边界点=%lu", sorted_boundary.size());
+
             // ========== 步骤 4: 角点检测 ==========
-            std::vector<int> corner_indices = 
+            std::vector<int> corner_indices =
                 detectCornersFromBoundary(sorted_boundary, 0.6f * M_PI);
-            
-            ROS_DEBUG("[RectFromCluster] 边界点=%lu, 角点=%lu", 
+
+            ROS_DEBUG("[RectFromCluster] 边界点=%lu, 角点=%lu",
                       sorted_boundary.size(), corner_indices.size());
-            
+
+            if (corner_indices.size() < 3) {
+                ROS_DEBUG("[RectFromCluster] 角点太少：%lu < 3, 尝试最小外接矩形",
+                          corner_indices.size());
+                corner_fail++;
+            }
+
             // ========== 步骤 5: 拟合矩形 ==========
             Eigen::Vector2f center_2d;
             float length, width, angle;
-            
+
             bool fitted = false;
             if (corner_indices.size() >= 3) {
                 // 尝试从角点拟合
-                fitted = fitRectangleFromCorners(sorted_boundary, corner_indices, 
+                fitted = fitRectangleFromCorners(sorted_boundary, corner_indices,
                                                   center_2d, length, width, angle);
+                if (fitted) {
+                    ROS_DEBUG("[RectFromCluster] 角点拟合成功：%.2fx%.2f, angle=%.1f°",
+                              length, width, angle);
+                }
             }
-            
+
             if (!fitted) {
                 // 角点拟合失败，使用最小外接矩形
                 fitted = fitMinAreaRect(sorted_boundary, center_2d, length, width, angle);
+                if (fitted) {
+                    ROS_DEBUG("[RectFromCluster] 最小外接矩形拟合成功：%.2fx%.2f, angle=%.1f°",
+                              length, width, angle);
+                } else {
+                    ROS_DEBUG("[RectFromCluster] 矩形拟合失败");
+                    fit_fail++;
+                    continue;
+                }
             }
-            
-            if (!fitted) continue;
-            
+
             // ========== 步骤 6: 验证矩形 ==========
             if (!validateRectangle(length, width, config_)) {
-                ROS_DEBUG("[RectFromCluster] 矩形验证失败：%.2fx%.2f", length, width);
+                ROS_DEBUG("[RectFromCluster] 矩形验证失败：%.2fx%.2f (min=%.2fx%.2f, max=%.2fx%.2f)",
+                          length, width, config_.length_min, config_.width_min,
+                          config_.length_max, config_.width_max);
+                validate_fail++;
+                // 记录尺寸用于统计
+                rectangle_sizes_.emplace_back(length, width);
                 continue;
             }
-            
+
+            ROS_INFO("[RectFromCluster] 方环 #%d 验证通过：%.2fx%.2f, angle=%.1f°",
+                     rect_num + 1, length, width, angle);
+
             // ========== 步骤 7: 计算 3D 中心 ==========
-            Eigen::Vector3f center_3d = centroid + 
+            Eigen::Vector3f center_3d = centroid +
                 eigenvectors * Eigen::Vector3f(center_2d[0], center_2d[1], 0);
-            
+
             // ========== 步骤 8: 创建矩形对象 ==========
             typename pcl::PointIndices::Ptr rect_indices(new pcl::PointIndices);
             rect_indices->indices = cluster->indices;
-            
+
             typename pcl::ModelCoefficients::Ptr coeffs(new pcl::ModelCoefficients);
             coeffs->values.resize(9);
             coeffs->values[0] = center_3d[0];
@@ -423,30 +475,62 @@ public:
             coeffs->values[6] = length;
             coeffs->values[7] = width;
             coeffs->values[8] = angle;
-            
+
             auto rect = ObjectFactory::createRectangle(
                 "rectangle_" + std::to_string(++rect_num),
                 rect_indices, coeffs, timer.elapsed(),
                 length, width, 0.05f,
                 false
             );
-            
+
             rectangles.push_back(rect);
-            
+
             // 标记已使用的点
             for (int idx : cluster->indices) {
                 used_indices.insert(idx);
             }
-            
+
             ROS_DEBUG("[RectFromCluster] 方环 #%d: center=(%.2f, %.2f, %.2f), size=%.2fx%.2f, angle=%.1f°",
                       rect_num, center_3d[0], center_3d[1], center_3d[2], length, width, angle);
         }
-        
+
         if (LOG_SHOULD()) {
             ROS_INFO("[RectFromCluster] 检测完成：%d/%d 聚类，找到 %d 个方环",
                      valid_clusters, total_clusters, rect_num);
+            ROS_INFO("[RectFromCluster] 失败统计：边界点=%d, 角点=%d, 拟合=%d, 验证=%d",
+                     boundary_fail, corner_fail, fit_fail, validate_fail);
+            
+            // 添加详细失败原因分析
+            if (validate_fail > 0 && rect_num == 0) {
+                ROS_WARN("[RectFromCluster] 所有聚类都因尺寸过小被过滤！");
+                ROS_WARN("[RectFromCluster] 当前配置：length_min=%.2f, width_min=%.2f",
+                         config_.length_min, config_.width_min);
+                ROS_WARN("[RectFromCluster] 建议：降低 min_inliers 或 length_min/width_min，或检查墙体是否用掉了太多点");
+            }
+            
+            // 输出尺寸分布统计（帮助调试）
+            if (!rectangle_sizes_.empty()) {
+                ROS_INFO("[RectFromCluster] 尺寸分布统计：");
+                float max_size = 0;
+                for (const auto& s : rectangle_sizes_) {
+                    max_size = std::max(max_size, std::max(s.first, s.second));
+                }
+                int bin_count = 10;
+                float bin_size = max_size / bin_count + 0.01;
+                std::vector<int> histogram(bin_count, 0);
+                for (const auto& s : rectangle_sizes_) {
+                    float avg = (s.first + s.second) / 2;
+                    int bin = std::min(bin_count - 1, static_cast<int>(avg / bin_size));
+                    histogram[bin]++;
+                }
+                for (int i = 0; i < bin_count; i++) {
+                    if (histogram[i] > 0) {
+                        ROS_INFO("  [%.2f-%.2f]: %d 个", i * bin_size, (i + 1) * bin_size, histogram[i]);
+                    }
+                }
+            }
         }
-        
+
         return rectangles;
     }
     

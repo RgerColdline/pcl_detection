@@ -122,8 +122,46 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         }
 
         // ========== 逻辑过滤 2: 内点数量二次检查（防止 RANSAC 误判）==========
+        // 注意：这里只是跳过当前平面，不把点标记为已使用，因为这些点可能属于其他物体
         if (inliers_local->indices.size() < static_cast<size_t>(config.min_inliers * 1.5f)) {
             // 内点数量刚过阈值，质量可能不好，跳过
+            // 重要：不把点标记为已使用，保留给后续聚类
+            std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
+            typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
+            for (int idx : current_indices->indices) {
+                if (inlier_set.find(idx) == inlier_set.end()) {
+                    new_indices->indices.push_back(idx);
+                }
+            }
+            current_indices = new_indices;
+            continue;
+        }
+
+        // ========== 逻辑过滤 3: 墙体宽度检查（新增）==========
+        // 计算平面尺寸
+        Eigen::Vector4f min_pt, max_pt;
+        pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
+
+        float plane_width =
+            std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
+        float plane_height = max_pt[2] - min_pt[2];
+        
+        // 墙体判定条件：
+        // 条件 A: 点数 >= min_inliers * 1.5 且 宽度 >= 2.0m
+        // 条件 B: 点数 >= 300 且 宽度 >= 2.0m
+        bool is_wall = false;
+        if (inliers_local->indices.size() >= static_cast<size_t>(config.min_inliers * 1.5f) && 
+            plane_width >= 2.0f) {
+            is_wall = true;
+        }
+        if (inliers_local->indices.size() >= 300 && plane_width >= 2.0f) {
+            is_wall = true;
+        }
+        
+        if (!is_wall) {
+            // 不满足墙体条件，点保留给后续聚类
+            ROS_DEBUG("[WallExtraction] 平面不满足墙体条件：点数=%lu, 宽度=%.2fm", 
+                      inliers_local->indices.size(), plane_width);
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
             for (int idx : current_indices->indices) {
@@ -156,6 +194,7 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         }
 
         if (is_duplicate) {
+            // 重复墙面，点保留给后续聚类
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
             for (int idx : current_indices->indices) {
@@ -167,16 +206,11 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
             continue;
         }
 
-        // 计算尺寸
-        Eigen::Vector4f min_pt, max_pt;
-        pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
-
-        float width =
-            std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
-        float height = max_pt[2] - min_pt[2];
+        // 确认是墙体，保存墙面信息
+        float width = plane_width;
+        float height = plane_height;
         float depth  = 0.0f;
 
-        // 保存墙面信息（记录提取时间）
         auto wall =
             ObjectFactory::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
                                timer.elapsed(), width, height, depth, use_normals);
@@ -306,6 +340,44 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
 
         // ========== 逻辑过滤 2: 内点数量二次检查（防止 RANSAC 误判）==========
         if (inliers_local->indices.size() < static_cast<size_t>(config.min_inliers * 1.5f)) {
+            // 内点数量刚过阈值，质量可能不好，跳过
+            // 重要：不把点标记为已使用，保留给后续聚类
+            std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
+            typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
+            for (int idx : current_indices->indices) {
+                if (inlier_set.find(idx) == inlier_set.end()) {
+                    new_indices->indices.push_back(idx);
+                }
+            }
+            current_indices = new_indices;
+            continue;
+        }
+
+        // ========== 逻辑过滤 3: 墙体宽度检查 ==========
+        // 计算平面尺寸
+        Eigen::Vector4f min_pt, max_pt;
+        pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
+
+        float plane_width =
+            std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
+        float plane_height = max_pt[2] - min_pt[2];
+
+        // 墙体判定条件：
+        // 条件 A: 点数 >= min_inliers * 1.5 且 宽度 >= 2.0m
+        // 条件 B: 点数 >= 300 且 宽度 >= 2.0m
+        bool is_wall = false;
+        if (inliers_local->indices.size() >= static_cast<size_t>(config.min_inliers * 1.5f) &&
+            plane_width >= 2.0f) {
+            is_wall = true;
+        }
+        if (inliers_local->indices.size() >= 300 && plane_width >= 2.0f) {
+            is_wall = true;
+        }
+
+        if (!is_wall) {
+            // 不满足墙体条件，点保留给后续聚类
+            ROS_DEBUG("[WallExtraction] 平面不满足墙体条件：点数=%lu, 宽度=%.2fm",
+                      inliers_local->indices.size(), plane_width);
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
             for (int idx : current_indices->indices) {
@@ -337,6 +409,7 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
         }
 
         if (is_duplicate) {
+            // 重复墙面，点保留给后续聚类
             std::set<int> inlier_set(inliers_local->indices.begin(), inliers_local->indices.end());
             typename pcl::PointIndices::Ptr new_indices(new pcl::PointIndices);
             for (int idx : current_indices->indices) {
@@ -348,16 +421,11 @@ std::vector<Object::Ptr> extractWalls(typename pcl::PointCloud<PointT>::Ptr clou
             continue;
         }
 
-        // 计算尺寸
-        Eigen::Vector4f min_pt, max_pt;
-        pcl::getMinMax3D(*cloud, *inliers_local, min_pt, max_pt);
-
-        float width =
-            std::sqrt(std::pow(max_pt[0] - min_pt[0], 2) + std::pow(max_pt[1] - min_pt[1], 2));
-        float height = max_pt[2] - min_pt[2];
+        // 确认是墙体，保存墙面信息
+        float width = plane_width;
+        float height = plane_height;
         float depth  = 0.0f;
 
-        // 保存墙面信息
         auto wall =
             ObjectFactory::createWall("wall_" + std::to_string(wall_num), inliers_local, coefficients,
                                timer.elapsed(), width, height, depth, false);

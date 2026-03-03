@@ -5,15 +5,15 @@
  * 订阅：/livox/lidar (livox_ros_driver2/CustomMsg)
  * 发布：/pcl_detection/result (ObjectDetectionResult)
  *       /pcl_detection/objects (DetectedObject[])
- * 
+ *
  * 配置说明：
  *   在 launch 文件中使用 <rosparam command="load" file="config.yaml" /> 加载配置
  *   所有检测参数通过 ROS 参数服务器传递
  */
 
+#include "pcl_object_detection/core/timer.hpp"
 #include "pcl_object_detection/ros/detector_wrapper.hpp"
 #include "pcl_object_detection/ros/livox_converter.hpp"
-#include "pcl_object_detection/core/timer.hpp"
 
 #include <livox_ros_driver2/CustomMsg.h>
 #include <pcl_detection/DetectedObject.h>
@@ -29,13 +29,8 @@ class ObjectDetectorNode
 {
   public:
     ObjectDetectorNode(::ros::NodeHandle &nh, ::ros::NodeHandle &pnh)
-        : nh_(nh)
-        , pnh_(pnh)
-        , detector_(nullptr)
-        , process_count_(0)
-        , skip_count_(0)
-        , last_log_time_(::ros::Time(0))
-    {
+        : nh_(nh), pnh_(pnh), detector_(nullptr), process_count_(0), skip_count_(0),
+          last_log_time_(::ros::Time(0)) {
         // 从 ROS 参数服务器加载所有参数（YAML 已加载到全局命名空间）
         std::string input_topic;
         std::string result_topic;
@@ -94,7 +89,8 @@ class ObjectDetectorNode
         bool should_log = false;
         if (log_interval_sec_ > 0 && (now - last_log_time_).toSec() >= log_interval_sec_) {
             should_log = true;
-        } else if (log_skip_frames_ >= 0 && (process_count_ % (log_skip_frames_ + 1)) == 0) {
+        }
+        else if (log_skip_frames_ >= 0 && (process_count_ % (log_skip_frames_ + 1)) == 0) {
             should_log = true;
         }
 
@@ -144,8 +140,8 @@ class ObjectDetectorNode
     }
 
   private:
-    ::ros::NodeHandle nh_;                               // 全局节点句柄（从全局命名空间读取参数）
-    ::ros::NodeHandle pnh_;                              // 私有节点句柄（保留但暂不使用）
+    ::ros::NodeHandle nh_;   // 全局节点句柄（从全局命名空间读取参数）
+    ::ros::NodeHandle pnh_;  // 私有节点句柄（保留但暂不使用）
 
     std::unique_ptr<ObjectDetectorWrapper<>> detector_;  // 检测器
 
@@ -158,8 +154,8 @@ class ObjectDetectorNode
     int skip_frames_;                                    // 跳帧
     int log_skip_frames_;                                // 日志跳帧数
     double log_interval_sec_;                            // 日志时间间隔（秒）
-    int livox_debug_level_;                              // Livox 日志级别：0=无，1=摘要，2=详细
-    ::ros::Time last_log_time_;                          // 上次日志时间
+    int livox_debug_level_;      // Livox 日志级别：0=无，1=摘要，2=详细
+    ::ros::Time last_log_time_;  // 上次日志时间
 };
 
 }  // namespace ros
@@ -168,6 +164,7 @@ class ObjectDetectorNode
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");                          // 支持中文日志输出
     ros::init(argc, argv, "object_detector_node");  // ROS 节点初始化
+    ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
     ros::NodeHandle nh;
     ros::NodeHandle pnh("~");
 
