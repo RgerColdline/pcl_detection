@@ -442,6 +442,15 @@ public:
                 }
             }
 
+            // ========== 步骤 6: 计算 3D 中心 ==========
+            Eigen::Vector3f center_3d = centroid +
+                eigenvectors * Eigen::Vector3f(center_2d[0], center_2d[1], 0);
+
+            // 输出每个聚类的详细信息（方便调试）
+            ROS_INFO("[RectFromCluster] 聚类 #%d: 中心=(%.2f, %.2f, %.2f), 尺寸=%.2fx%.2f, angle=%.1f°, 点数=%lu",
+                     valid_clusters, center_3d[0], center_3d[1], center_3d[2], 
+                     length, width, angle, cluster->indices.size());
+
             // ========== 步骤 6: 验证矩形 ==========
             if (!validateRectangle(length, width, config_)) {
                 ROS_DEBUG("[RectFromCluster] 矩形验证失败：%.2fx%.2f (min=%.2fx%.2f, max=%.2fx%.2f)",
@@ -456,11 +465,7 @@ public:
             ROS_INFO("[RectFromCluster] 方环 #%d 验证通过：%.2fx%.2f, angle=%.1f°",
                      rect_num + 1, length, width, angle);
 
-            // ========== 步骤 7: 计算 3D 中心 ==========
-            Eigen::Vector3f center_3d = centroid +
-                eigenvectors * Eigen::Vector3f(center_2d[0], center_2d[1], 0);
-
-            // ========== 步骤 8: 创建矩形对象 ==========
+            // ========== 步骤 7: 创建矩形对象 ==========
             typename pcl::PointIndices::Ptr rect_indices(new pcl::PointIndices);
             rect_indices->indices = cluster->indices;
 
