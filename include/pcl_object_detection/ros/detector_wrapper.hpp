@@ -481,6 +481,9 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
         result.wall_count      = 0;
         result.cylinder_count  = 0;
         result.circle_count    = 0;
+        result.rectangle_count = 0;
+        result.obstacle_count  = 0;
+        result.rectangle_time  = 0.0f;
 
         const auto& objs = use_obstacle_pipeline_ ? obstacle_pipeline_.objects : pipeline_.objects;
         const auto& filtered_cloud = use_obstacle_pipeline_ ? obstacle_pipeline_.filtered_cloud : pipeline_.filtered_cloud;
@@ -535,17 +538,17 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
                     break;
 
                 case 3:  // Rectangle
-                    result.circle_count++;
+                    result.rectangle_count++;
                     obj_msg.width = obj->coefficients->values[6];
                     obj_msg.height = obj->coefficients->values[7];
-                    obj_msg.radius = obj->coefficients->values[8];
+                    obj_msg.radius = obj->coefficients->values[8];  // 角度
                     obj_msg.position.x = obj->coefficients->values[0];
                     obj_msg.position.y = obj->coefficients->values[1];
                     obj_msg.position.z = obj->coefficients->values[2];
                     break;
 
                 case 4:  // Obstacle
-                    result.cylinder_count++;
+                    result.obstacle_count++;
                     // 障碍物：使用体素化质心（避免点云分布不均）
                     {
                         Eigen::Vector4f centroid = core::computeRobustCentroid(
@@ -553,6 +556,11 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
                         obj_msg.position.x = centroid[0];
                         obj_msg.position.y = centroid[1];
                         obj_msg.position.z = centroid[2];
+                    }
+                    // 障碍物半径和高度从 coefficients 获取
+                    if (obj->coefficients->values.size() >= 7) {
+                        obj_msg.radius = obj->coefficients->values[6];
+                        obj_msg.height = obj->height;
                     }
                     break;
 

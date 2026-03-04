@@ -8,6 +8,8 @@ DetectedObject[] objects
 int32 wall_count
 int32 cylinder_count
 int32 circle_count
+int32 rectangle_count
+int32 obstacle_count
 
 # 处理时间统计
 float32 total_time
@@ -16,6 +18,7 @@ float32 normals_time
 float32 wall_time
 float32 cylinder_time
 float32 circle_time
+float32 rectangle_time
 
 # 状态
 bool success

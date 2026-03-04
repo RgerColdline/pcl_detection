@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- 障碍物检测节点 -->
+    <node name="pcl_detection" pkg="pcl_detection" type="object_detector_node" output="screen">
+        <!-- 配置参数 -->
+        <rosparam command="load" file="$(find pcl_detection)/config/sample_config.yaml" />
+        
+        <!-- 话题配置 -->
+        <param name="input_topic" value="/livox/lidar" />
+        <param name="result_topic" value="/pcl_detection/obstacles" />
+        <param name="objects_topic" value="/pcl_detection/objects" />
+        
+        <!-- 启用新 Pipeline -->
+        <param name="use_obstacle_pipeline" value="true" />
+        
+        <!-- 日志配置 -->
+        <param name="log_skip_frames" value="19" />
+        <param name="ros_log_level" value="INFO" />
+    </node>
+</launch>

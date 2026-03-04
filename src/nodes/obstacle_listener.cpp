@@ -45,8 +45,9 @@ private:
         // 打印统计信息
         ROS_INFO(" ");
         ROS_INFO("========== 检测结果 ==========");
-        ROS_INFO("墙体：%d 个，圆柱：%d 个，圆环：%d 个",
-                 msg->wall_count, msg->cylinder_count, msg->circle_count);
+        ROS_INFO("墙体：%d 个，圆柱：%d 个，圆环：%d 个，方环：%d 个，障碍物：%d 个",
+                 msg->wall_count, msg->cylinder_count, msg->circle_count,
+                 msg->rectangle_count, msg->obstacle_count);
         ROS_INFO("总耗时：%.2f ms", msg->total_time);
         ROS_INFO("  - 下采样：%.2f ms", msg->downsample_time);
         ROS_INFO("  - 法向量：%.2f ms", msg->normals_time);
@@ -77,17 +78,19 @@ private:
             case 0: type_name = "墙体"; break;
             case 1: type_name = "圆柱"; break;
             case 2: type_name = "圆环"; break;
+            case 3: type_name = "方环"; break;
+            case 4: type_name = "障碍物"; break;
             default: type_name = "未知"; break;
         }
-        
+
         ROS_INFO("【物体 %d】%s (%s)", index, obj.name.c_str(), type_name.c_str());
-        ROS_INFO("  位置：(%.3f, %.3f, %.3f)", 
+        ROS_INFO("  位置：(%.3f, %.3f, %.3f)",
                  obj.position.x, obj.position.y, obj.position.z);
-        ROS_INFO("  尺寸：%.3f x %.3f x %.3f m", 
+        ROS_INFO("  尺寸：%.3f x %.3f x %.3f m",
                  obj.width, obj.height, obj.depth);
         ROS_INFO("  点数：%d", obj.point_count);
         ROS_INFO("  耗时：%.3f ms", obj.extraction_time);
-        
+
         // 根据类型打印特有信息
         switch (obj.type)
         {
@@ -99,6 +102,12 @@ private:
                 break;
             case 2:  // 圆环
                 printCircleInfo(obj);
+                break;
+            case 3:  // 方环
+                printRectangleInfo(obj);
+                break;
+            case 4:  // 障碍物
+                printObstacleInfo(obj);
                 break;
         }
     }
@@ -140,12 +149,35 @@ private:
     void printCircleInfo(const pcl_detection::DetectedObject& obj)
     {
         ROS_INFO("  半径：%.3f m", obj.radius);
-        
+
         // 计算距离
-        double dist = std::sqrt(obj.position.x * obj.position.x + 
-                               obj.position.y * obj.position.y + 
+        double dist = std::sqrt(obj.position.x * obj.position.x +
+                               obj.position.y * obj.position.y +
                                obj.position.z * obj.position.z);
         ROS_INFO("  距原点：%.3f m", dist);
+    }
+
+    void printRectangleInfo(const pcl_detection::DetectedObject& obj)
+    {
+        ROS_INFO("  长度：%.3f m", obj.width);
+        ROS_INFO("  宽度：%.3f m", obj.height);
+        ROS_INFO("  角度：%.1f°", obj.radius);  // radius 字段存储角度
+
+        // 计算水平距离
+        double h_dist = std::sqrt(obj.position.x * obj.position.x +
+                                  obj.position.y * obj.position.y);
+        ROS_INFO("  水平距离：%.3f m", h_dist);
+    }
+
+    void printObstacleInfo(const pcl_detection::DetectedObject& obj)
+    {
+        ROS_INFO("  半径：%.3f m", obj.radius);
+        ROS_INFO("  高度：%.3f m", obj.height);
+
+        // 计算水平距离
+        double h_dist = std::sqrt(obj.position.x * obj.position.x +
+                                  obj.position.y * obj.position.y);
+        ROS_INFO("  水平距离：%.3f m", h_dist);
     }
 
 private:
