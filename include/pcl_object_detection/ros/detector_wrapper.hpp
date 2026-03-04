@@ -424,10 +424,12 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
                    obstacle_config_.rectangle_config.plane_normal_z_max, 0.5f);
         pnh_.param("obstacle_pipeline/rectangle_config/coverage_threshold", 
                    obstacle_config_.rectangle_config.coverage_threshold, 0.5f);
-        pnh_.param("obstacle_pipeline/rectangle_config/ransac_iterations", 
+        pnh_.param("obstacle_pipeline/rectangle_config/ransac_iterations",
                    obstacle_config_.rectangle_config.ransac_iterations, 200);
-        pnh_.param("obstacle_pipeline/rectangle_config/max_rectangles", 
+        pnh_.param("obstacle_pipeline/rectangle_config/max_rectangles",
                    obstacle_config_.rectangle_config.max_rectangles, 3);
+        pnh_.param("obstacle_pipeline/rectangle_config/hollow_ratio_threshold",
+                   obstacle_config_.rectangle_config.hollow_ratio_threshold, 0.4f);
 
         // 聚类配置
         pnh_.param("obstacle_pipeline/cluster_config/enable", 

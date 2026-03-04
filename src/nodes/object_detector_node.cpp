@@ -164,7 +164,25 @@ class ObjectDetectorNode
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");                          // 支持中文日志输出
     ros::init(argc, argv, "object_detector_node");  // ROS 节点初始化
-    ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
+    
+    // 从 YAML 配置读取 ROS 日志级别（默认 INFO）
+    ros::NodeHandle nh_temp;
+    std::string ros_log_level;
+    nh_temp.param("ros_log_level", ros_log_level, std::string("INFO"));
+    
+    // 设置 ROS 日志级别
+    if (ros_log_level == "DEBUG") {
+        ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug);
+    } else if (ros_log_level == "INFO") {
+        ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
+    } else if (ros_log_level == "WARN") {
+        ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Warn);
+    } else if (ros_log_level == "ERROR") {
+        ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Error);
+    } else if (ros_log_level == "FATAL") {
+        ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Fatal);
+    }
+    
     ros::NodeHandle nh;
     ros::NodeHandle pnh("~");
 

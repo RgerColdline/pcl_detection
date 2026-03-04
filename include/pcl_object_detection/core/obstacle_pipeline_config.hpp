@@ -91,6 +91,8 @@ struct RectangleExtractionConfig
     float width_max          = 2.0f;   // 最大宽度（米）
     float aspect_ratio_max   = 4.0f;   // 最大长宽比
     int max_rectangles       = 10;     // 最大检测方环数量
+    // 中空检测参数（方环特征）
+    float hollow_ratio_threshold = 0.4f;  // 中空比例阈值（0-1，越大要求越中空）
     // 以下字段保留，兼容旧代码
     float plane_distance_threshold = 0.05f;
     float plane_angle_threshold    = 30.0f;

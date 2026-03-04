@@ -23,6 +23,8 @@ log_skip_frames: 19
 log_interval_sec: 2.0
 # Livox 日志级别：0=无，1=摘要，2=详细
 livox_debug_level: 1  # 降低为 1，减少详细日志
+# ROS 日志级别：DEBUG/INFO/WARN/ERROR/FATAL
+ros_log_level: "INFO"
 
 # ============================================================================
 # 时间测量配置
@@ -88,10 +90,11 @@ circle_extraction:
   normal_tolerance: 0.5  #法向量容差，用于验证圆环法向量方向
 
 # ============================================================================
-# 矩形框检测配置
+# 矩形框检测配置（原 Pipeline：墙体 + 圆柱 + 圆环 + 矩形框）
 # ============================================================================
-# 注意：矩形框检测计算量较大，建议调大下采样 leaf_size 提升速度
-# 如果误检较多，可以增大 min_inliers、coverage_threshold 或缩小 length/width 范围
+# 注意：这是原 Pipeline 的配置，使用 RANSAC 矩形拟合算法
+# 如果使用新 Pipeline（use_obstacle_pipeline: true），此配置被忽略
+# ============================================================================
 rectangle_extraction:
   enable: true  #是否启用检测矩形框（方环）[默认关闭，需要时开启]
   using_normal: false  #是否使用法线信息（建议使用，可提高检测精度）
@@ -163,12 +166,13 @@ obstacle_pipeline:
     angle_threshold: 15.0  # 法线与垂直方向夹角阈值（度）
     axis: [0, 0, 1]  # 参考向量
 
-  # 方环检测配置（新 Pipeline 专用）
+  # 方环检测配置（新 Pipeline 专用：基于聚类 + 角点检测）
+  # 注意：这是新 Pipeline 的配置，使用聚类 + 角点检测算法，支持中空检测
   rectangle_config:
     enable: true
     using_normal: false
     distance_threshold: 0.05
-    min_inliers: 100
+    min_inliers: 70
     length_min: 0.5
     length_max: 2.5
     width_min: 0.4
@@ -179,12 +183,13 @@ obstacle_pipeline:
     coverage_threshold: 0.5
     ransac_iterations: 200
     max_rectangles: 3
+    hollow_ratio_threshold: 0.5  #中空比例阈值（0-1，越大要求越中空，建议 0.3-0.5）
 
   # 聚类配置
   cluster_config:
     enable: true
-    cluster_tolerance: 0.3   # 聚类距离阈值（米）[增大减少聚类数量，0.3=30cm]
-    min_cluster_size: 50    # 最小簇点数 [增大过滤小物体，500 点约 1 立方米]
+    cluster_tolerance: 0.3   # 聚类距离阈值（米）[增大到 0.5，让方环的顶部和腿能聚在一起]
+    min_cluster_size: 50    # 最小簇点数 [降低到 30，允许检测较小的方环]
     max_cluster_size: 1000 # 最大簇点数
 
   # OBB 包围盒配置
