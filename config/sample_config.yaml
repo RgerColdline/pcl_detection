@@ -188,13 +188,13 @@ obstacle_pipeline:
   # 聚类配置
   cluster_config:
     enable: true
-    cluster_tolerance: 0.3   # 聚类距离阈值（米）[增大到 0.5，让方环的顶部和腿能聚在一起]
+    cluster_tolerance: 0.1   # 聚类距离阈值（米）[增大到 0.5，让方环的顶部和腿能聚在一起]
     min_cluster_size: 50    # 最小簇点数 [降低到 30，允许检测较小的方环]
     max_cluster_size: 1000 # 最大簇点数
 
   # OBB 包围盒配置
   obb_config:
-    inflation_radius: 0.1  # 膨胀半径（米）
+    inflation_radius: 0.0  # 膨胀半径（米）
     min_obstacle_height: 0.2  # 最小障碍物高度（米）
 
   # 时间测量配置

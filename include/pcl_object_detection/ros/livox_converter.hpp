@@ -39,6 +39,7 @@ class LivoxConverter
         output_cloud->header.stamp    = livox_msg->header.stamp.toSec() * 1e6;
         output_cloud->header.frame_id = livox_msg->header.frame_id;
 
+        output_cloud->clear();  // 清空点云（虽然刚创建，但确保安全）
         output_cloud->reserve(livox_msg->point_num);
 
         // 关键转换步骤（过滤异常点）

@@ -317,6 +317,7 @@ private:
                               config_.downsample_config.leaf_size,
                               config_.downsample_config.leaf_size);
             voxel.filter(*cloud_filtered);
+            // 注意：ApproximateVoxelGrid 有内部缓存，但局部对象销毁时会自动清理
         } else {
             pcl::VoxelGrid<PointT> voxel;
             voxel.setInputCloud(cloud);
@@ -324,6 +325,7 @@ private:
                               config_.downsample_config.leaf_size,
                               config_.downsample_config.leaf_size);
             voxel.filter(*cloud_filtered);
+            // VoxelGrid 没有持久化缓存，每次都是独立的
         }
 
         return cloud_filtered;
