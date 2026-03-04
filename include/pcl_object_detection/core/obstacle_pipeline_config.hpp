@@ -111,6 +111,15 @@ struct ObbConfig
 // 新 Pipeline 统一配置
 struct ObstaclePipelineConfig
 {
+    // 坐标系转换配置
+    struct TransformConfig {
+        bool enable = false;           // 是否启用坐标转换
+        std::string pose_topic = "/mavros/local_position/pose";  // 位姿话题
+        std::string frame_id = "world";  // 世界坐标系名称
+    };
+    
+    TransformConfig transform_config;  // 坐标转换配置
+    
     ObstacleDownsampleConfig downsample_config;
     NormalEstimationConfig normal_config;      // 法向量估计配置
     GroundConfig ground_config;

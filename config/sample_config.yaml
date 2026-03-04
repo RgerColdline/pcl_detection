@@ -145,6 +145,12 @@ use_obstacle_pipeline: true  # 设置为 true 启用新 Pipeline
 # 新 Pipeline 下采样配置
 # ----------------------------------------------------------------------------
 obstacle_pipeline:
+  # 坐标系转换配置
+  transform_config:
+    enable: true              # 是否启用从无人机系到世界系的转换
+    pose_topic: "/mavros/local_position/pose"  # 无人机位姿话题
+    frame_id: "world"          # 世界坐标系名称
+
   downsample_config:
     approx: true  # true=ApproximateVoxelGrid(更快), false=VoxelGrid(标准)
     leaf_size: 0.08  # 下采样网格大小（米）

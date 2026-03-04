@@ -171,13 +171,19 @@ private:
 
     void printObstacleInfo(const pcl_detection::DetectedObject& obj)
     {
-        ROS_INFO("  半径：%.3f m", obj.radius);
-        ROS_INFO("  高度：%.3f m", obj.height);
+        ROS_INFO("  尺寸：%.2f x %.2f x %.2f m (长 x 宽 x 高，含膨胀)",
+                 obj.width, obj.height, obj.depth);
 
         // 计算水平距离
         double h_dist = std::sqrt(obj.position.x * obj.position.x +
                                   obj.position.y * obj.position.y);
         ROS_INFO("  水平距离：%.3f m", h_dist);
+        
+        // 如果有 OBB 系数，输出主轴方向
+        if (obj.obb_coeffs.size() >= 6) {
+            ROS_INFO("  主轴方向：(%.2f, %.2f, %.2f)",
+                     obj.obb_coeffs[3], obj.obb_coeffs[4], obj.obb_coeffs[5]);
+        }
     }
 
 private:

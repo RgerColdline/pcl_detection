@@ -21,6 +21,14 @@ float32 radius
 # 平面方程参数 (Ax + By + Cz + D = 0)
 float32[] plane_coeffs
 
+# OBB 立方体系数（障碍物用）
+# [0-2]: 中心位置
+# [3-5]: 主轴方向（最长维度方向）
+# [6]: 长度
+# [7]: 宽度
+# [8]: 高度
+float32[] obb_coeffs
+
 # 点云内点数量
 int32 point_count
 

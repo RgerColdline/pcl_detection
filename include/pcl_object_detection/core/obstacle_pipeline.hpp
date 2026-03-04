@@ -12,9 +12,11 @@
 #include "timer.hpp"
 
 #include <ros/ros.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <pcl/common/common.h>
 #include <pcl/common/centroid.h>
+#include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/filters/voxel_grid.h>
@@ -24,6 +26,7 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <Eigen/Geometry>
 
 namespace pcl_object_detection
 {
@@ -74,6 +77,60 @@ public:
     PointCloudPtrT input_cloud;
     PointCloudPtrT filtered_cloud;
     NormalCloudPtrT normals;
+    
+    // 无人机位姿（世界坐标系下的位置和姿态）
+    Eigen::Vector3f drone_position_;
+    Eigen::Quaternionf drone_orientation_;
+    bool has_pose_;
+
+    /**
+     * @brief 设置无人机位姿
+     * @param position 位置 (x, y, z)
+     * @param orientation 四元数 (x, y, z, w)
+     */
+    void setDronePose(const Eigen::Vector3f& position, 
+                      const Eigen::Quaternionf& orientation) {
+        drone_position_ = position;
+        drone_orientation_ = orientation.normalized();
+        has_pose_ = true;
+    }
+
+    /**
+     * @brief 将点云从无人机系转换到世界系
+     * @param cloud 输入点云（无人机系）
+     * @return 转换后的点云（世界系）
+     */
+    PointCloudPtrT transformToWorld(PointCloudPtrT cloud) {
+        if (!has_pose_ || !config_.transform_config.enable) {
+            return cloud;  // 没有位姿或不启用转换，直接返回
+        }
+
+        PointCloudPtrT transformed_cloud(new pcl::PointCloud<PointT>());
+        
+        // 构建 4x4 变换矩阵
+        Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+        
+        // 设置旋转部分（从无人机系到世界系的旋转）
+        transform.linear() = drone_orientation_.toRotationMatrix();
+        
+        // 设置平移部分（无人机在世界系中的位置）
+        transform.translation() = drone_position_;
+        
+        // 使用 PCL 自带的变换函数（有 SSE 加速）
+        pcl::transformPointCloud(*cloud, *transformed_cloud, transform);
+        
+        // 更新点云的 frame_id
+        transformed_cloud->header.frame_id = config_.transform_config.frame_id;
+        
+        // 节流输出转换日志（每 N 帧输出一次）
+        if (LOG_SHOULD()) {
+            ROS_INFO("[Transform] 点云转换：无人机系 → 世界系，点数=%lu, 位置=(%.2f, %.2f, %.2f)",
+                     transformed_cloud->size(),
+                     drone_position_[0], drone_position_[1], drone_position_[2]);
+        }
+        
+        return transformed_cloud;
+    }
 
     /**
      * @brief 运行整个流水线
@@ -85,6 +142,17 @@ public:
 
         input_cloud = input;
         objects.clear();
+
+        // ========================================================================
+        // 步骤 0: 坐标系转换（如果启用）
+        // ========================================================================
+        if (config_.transform_config.enable && has_pose_) {
+            input_cloud = transformToWorld(input_cloud);
+            if (LOG_SHOULD()) {
+                ROS_INFO("[ObstaclePipeline] 坐标转换完成：frame_id=%s", 
+                         input_cloud->header.frame_id.c_str());
+            }
+        }
 
         // ========================================================================
         // 步骤 1: 下采样
@@ -232,8 +300,8 @@ public:
             auto obstacle = createObstacleFromCluster<PointT>(
                 filtered_cloud, clusters[i], obstacle_id, 0.0);
 
-            // 计算 OBB 并转换为圆柱表示
-            if (updateObstacleAsCylinder<PointT>(obstacle, filtered_cloud, config_.obb_config)) {
+            // 计算 OBB 并转换为立方体表示（带膨胀）
+            if (updateObstacleAsBox<PointT>(obstacle, filtered_cloud, config_.obb_config)) {
                 obstacle->name = "obstacle_" + std::to_string(obstacle_id++);
                 objects.push_back(obstacle);
             }

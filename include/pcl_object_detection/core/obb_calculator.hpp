@@ -146,18 +146,18 @@ void obbToCylinder(const Eigen::Vector3f &obb_center,
 }
 
 /**
- * @brief 更新障碍物对象为圆柱表示
- * 
+ * @brief 更新障碍物对象为 OBB 立方体表示（带膨胀）
+ *
  * @param obstacle 障碍物对象（输入/输出）
  * @param cloud 原始点云
  * @param config OBB 配置
  * @return 是否成功
  */
 template <typename PointT>
-bool updateObstacleAsCylinder(typename Object::Ptr obstacle,
-                              typename pcl::PointCloud<PointT>::Ptr cloud,
-                              const ObbConfig &config) {
-    
+bool updateObstacleAsBox(typename Object::Ptr obstacle,
+                         typename pcl::PointCloud<PointT>::Ptr cloud,
+                         const ObbConfig &config) {
+
     if (!obstacle || !cloud) {
         return false;
     }
@@ -165,7 +165,7 @@ bool updateObstacleAsCylinder(typename Object::Ptr obstacle,
     // 计算 OBB
     Eigen::Vector3f obb_center, obb_size;
     std::vector<Eigen::Vector3f> obb_axes;
-    
+
     if (!computeOBB<PointT>(cloud, *obstacle->inliers, obb_center, obb_size, obb_axes)) {
         ROS_WARN("[OBB] 无法计算障碍物 %s 的 OBB", obstacle->name.c_str());
         return false;
@@ -178,32 +178,38 @@ bool updateObstacleAsCylinder(typename Object::Ptr obstacle,
         // 仍然保留，但标记
     }
 
-    // 转换为圆柱
-    Eigen::Vector3f cylinder_center, cylinder_axis;
-    float cylinder_radius, cylinder_height;
-    
-    obbToCylinder(obb_center, obb_size, obb_axes, config.inflation_radius,
-                  cylinder_center, cylinder_radius, cylinder_height, cylinder_axis);
+    // 膨胀 OBB 尺寸（各方向均匀膨胀）
+    float inflation = config.inflation_radius;
+    float inflated_length = obb_size[0] + 2 * inflation;
+    float inflated_width  = obb_size[1] + 2 * inflation;
+    float inflated_height = obb_size[2] + 2 * inflation;
 
-    // 更新障碍物系数
-    obstacle->coefficients->values.resize(7);
-    obstacle->coefficients->values[0] = cylinder_center[0];  // 中心 X
-    obstacle->coefficients->values[1] = cylinder_center[1];  // 中心 Y
-    obstacle->coefficients->values[2] = cylinder_center[2];  // 中心 Z
-    obstacle->coefficients->values[3] = cylinder_axis[0];    // 轴向 X
-    obstacle->coefficients->values[4] = cylinder_axis[1];    // 轴向 Y
-    obstacle->coefficients->values[5] = cylinder_axis[2];    // 轴向 Z
-    obstacle->coefficients->values[6] = cylinder_radius;     // 半径
+    // 更新障碍物系数：存储 OBB 信息
+    // [0-2]: 中心位置
+    // [3-5]: 主轴方向（最长维度方向）
+    // [6]: 长度（最长维度）
+    // [7]: 宽度（次长维度）
+    // [8]: 高度（Z 方向）
+    obstacle->coefficients->values.resize(9);
+    obstacle->coefficients->values[0] = obb_center[0];           // 中心 X
+    obstacle->coefficients->values[1] = obb_center[1];           // 中心 Y
+    obstacle->coefficients->values[2] = obb_center[2];           // 中心 Z
+    obstacle->coefficients->values[3] = obb_axes[2][0];          // 主轴 X（最长维度方向）
+    obstacle->coefficients->values[4] = obb_axes[2][1];          // 主轴 Y
+    obstacle->coefficients->values[5] = obb_axes[2][2];          // 主轴 Z
+    obstacle->coefficients->values[6] = inflated_length;         // 长度
+    obstacle->coefficients->values[7] = inflated_width;          // 宽度
+    obstacle->coefficients->values[8] = inflated_height;         // 高度
 
-    // 更新尺寸
-    obstacle->width = cylinder_radius * 2;
-    obstacle->depth = cylinder_radius * 2;
-    obstacle->height = cylinder_height;
+    // 更新尺寸（使用膨胀后的尺寸）
+    obstacle->width = inflated_length;
+    obstacle->depth = inflated_width;
+    obstacle->height = inflated_height;
 
-    ROS_DEBUG("[OBB] 障碍物 %s: 中心 (%.2f, %.2f, %.2f), 半径：%.2f, 高度：%.2f",
+    ROS_DEBUG("[OBB] 障碍物 %s: 中心 (%.2f, %.2f, %.2f), 尺寸：%.2f x %.2f x %.2f m (膨胀后)",
               obstacle->name.c_str(),
-              cylinder_center[0], cylinder_center[1], cylinder_center[2],
-              cylinder_radius, cylinder_height);
+              obb_center[0], obb_center[1], obb_center[2],
+              inflated_length, inflated_width, inflated_height);
 
     return true;
 }

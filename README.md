@@ -175,11 +175,21 @@ private:
 
     void processObstacle(const pcl_detection::DetectedObject& obj)
     {
-        // 障碍物特有接口
-        double radius = obj.radius;     // 半径 (m)
-        double obs_height = obj.height; // 高度 (m)
+        // 障碍物特有接口（OBB 立方体）
+        double length = obj.width;    // 长度 (m，含膨胀)
+        double width = obj.height;    // 宽度 (m，含膨胀)
+        double height = obj.depth;    // 高度 (m，含膨胀)
+
+        ROS_INFO("  [障碍物] 尺寸：%.2f x %.2f x %.2f m (长 x 宽 x 高)", 
+                 length, width, height);
         
-        ROS_INFO("  [障碍物] 半径：%.2f m, 高度：%.2f m", radius, obs_height);
+        // 可选：读取主轴方向（从 obb_coeffs）
+        if (obj.obb_coeffs.size() >= 6) {
+            double ax = obj.obb_coeffs[3];
+            double ay = obj.obb_coeffs[4];
+            double az = obj.obb_coeffs[5];
+            ROS_INFO("  [障碍物] 主轴方向：(%.2f, %.2f, %.2f)", ax, ay, az);
+        }
     }
 
     std::string getTypeName(int type)

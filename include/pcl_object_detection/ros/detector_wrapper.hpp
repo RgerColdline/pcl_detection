@@ -12,6 +12,7 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <pcl_detection/DetectedObject.h>
 #include <pcl_detection/ObjectDetectionResult.h>
 #include <ros/ros.h>
@@ -41,7 +42,7 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
 
     // 初始化检测器（从 ROS 参数服务器加载配置）
     ObjectDetectorWrapper(::ros::NodeHandle &nh, ::ros::NodeHandle &pnh)
-        : nh_(nh), pnh_(pnh), use_obstacle_pipeline_(false) {
+        : nh_(nh), pnh_(pnh), use_obstacle_pipeline_(false), has_pose_(false) {
         loadConfigFromROS();
 
         // 初始化日志限流器（每 N 帧输出一次）
@@ -54,6 +55,13 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
         obstacle_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("/pcl_detection/cloud/obstacle", 1);
         cluster_cloud_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("/pcl_detection/cloud/cluster", 10);
 
+        // 订阅无人机位姿（如果启用坐标转换）
+        if (use_obstacle_pipeline_ && obstacle_config_.transform_config.enable) {
+            pose_sub_ = nh_.subscribe(obstacle_config_.transform_config.pose_topic, 10,
+                                      &ObjectDetectorWrapper::poseCallback, this);
+            ROS_INFO("订阅无人机位姿话题：%s", obstacle_config_.transform_config.pose_topic.c_str());
+        }
+
         if (use_obstacle_pipeline_) {
             // 使用新 Pipeline
             obstacle_pipeline_.setConfig(obstacle_config_);
@@ -65,6 +73,28 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
         }
 
         ROS_INFO("ObjectDetectorWrapper 初始化完成（从 ROS 参数服务器加载配置）");
+    }
+
+    /**
+     * @brief 无人机位姿回调
+     */
+    void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+        // 提取位置
+        Eigen::Vector3f position;
+        position.x() = msg->pose.position.x;
+        position.y() = msg->pose.position.y;
+        position.z() = msg->pose.position.z;
+
+        // 提取四元数
+        Eigen::Quaternionf orientation;
+        orientation.x() = msg->pose.orientation.x;
+        orientation.y() = msg->pose.orientation.y;
+        orientation.z() = msg->pose.orientation.z;
+        orientation.w() = msg->pose.orientation.w;
+
+        // 设置到 Pipeline
+        obstacle_pipeline_.setDronePose(position, orientation);
+        has_pose_ = true;
     }
 
     // 检测步骤：输入点云，输出检测结果
@@ -431,6 +461,14 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
         pnh_.param("obstacle_pipeline/rectangle_config/hollow_ratio_threshold",
                    obstacle_config_.rectangle_config.hollow_ratio_threshold, 0.4f);
 
+        // 坐标转换配置
+        pnh_.param("obstacle_pipeline/transform_config/enable",
+                   obstacle_config_.transform_config.enable, false);
+        pnh_.param("obstacle_pipeline/transform_config/pose_topic",
+                   obstacle_config_.transform_config.pose_topic, std::string("/mavros/local_position/pose"));
+        pnh_.param("obstacle_pipeline/transform_config/frame_id",
+                   obstacle_config_.transform_config.frame_id, std::string("world"));
+
         // 聚类配置
         pnh_.param("obstacle_pipeline/cluster_config/enable", 
                    obstacle_config_.cluster_config.enable, true);
@@ -557,10 +595,12 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
                         obj_msg.position.y = centroid[1];
                         obj_msg.position.z = centroid[2];
                     }
-                    // 障碍物半径和高度从 coefficients 获取
-                    if (obj->coefficients->values.size() >= 7) {
-                        obj_msg.radius = obj->coefficients->values[6];
-                        obj_msg.height = obj->height;
+                    // 障碍物 OBB 系数
+                    if (obj->coefficients->values.size() >= 9) {
+                        obj_msg.obb_coeffs.resize(9);
+                        for (int i = 0; i < 9; ++i) {
+                            obj_msg.obb_coeffs[i] = obj->coefficients->values[i];
+                        }
                     }
                     break;
 
@@ -741,6 +781,10 @@ template <typename PointT = pcl::PointXYZI> class ObjectDetectorWrapper
     ::ros::Publisher obstacle_cloud_pub_;
     ::ros::Publisher cluster_cloud_pub_;  // 聚类簇点云发布器
     
+    // 无人机位姿订阅器
+    ::ros::Subscriber pose_sub_;
+    bool has_pose_;  // 是否收到过位姿
+
     // 点云发布配置
     bool publish_cloud_ = true;      // 默认发布点云
     int min_cloud_points_ = 10;      // 最小点云数量阈值
